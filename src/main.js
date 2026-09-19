@@ -470,11 +470,40 @@ function moveVertical(distance){
   return true;
 }
 
+function updateSneakState(wantSneak){
+  if(wantSneak===sneaking)return;
+
+  const delta=EYE_HEIGHT-SNEAK_EYE_HEIGHT;
+  const oldY=camera.position.y;
+
+  if(wantSneak){
+    camera.position.y-=delta;
+    sneaking=true;
+
+    if(collides()){
+      camera.position.y=oldY;
+      sneaking=false;
+    }
+    return;
+  }
+
+  camera.position.y+=delta;
+  sneaking=false;
+
+  if(collides()){
+    camera.position.y=oldY;
+    sneaking=true;
+  }
+}
+
 function updatePlayer(dt){
-  sneaking=keys.has("ControlLeft")||keys.has("ControlRight");
+  updateSneakState(
+    grounded&&(keys.has("ControlLeft")||keys.has("ControlRight"))
+  );
+
   sprinting=!sneaking&&
     (keys.has("ShiftLeft")||keys.has("ShiftRight"))&&
-    (keys.has("KeyW")||keys.has("KeyS")||keys.has("KeyA")||keys.has("KeyD"));
+    keys.has("KeyW");
 
   const speed=sneaking?SNEAK_SPEED:(sprinting?SPRINT_SPEED:WALK_SPEED);
   const acceleration=grounded?GROUND_ACCELERATION:AIR_ACCELERATION;
