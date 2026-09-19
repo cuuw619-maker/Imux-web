@@ -16,7 +16,7 @@ renderer.setSize(innerWidth,innerHeight,false);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 
 const scene=new THREE.Scene();
-scene.background=new THREE.Color(0x87ceeb);
+scene.background=null;
 
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,180);
 const controls=new PointerLockControls(camera,canvas);
@@ -32,6 +32,33 @@ const WORLD_LIMIT=31.5;
 
 camera.position.set(.5,world.heightAt(.5,.5)+1+EYE_HEIGHT+.05,.5);
 
+const menuScene=new THREE.Scene();
+const menuCamera=new THREE.PerspectiveCamera(110,innerWidth/innerHeight,.1,10);
+menuCamera.rotation.order="ZYX";
+
+const textureLoader=new THREE.TextureLoader();
+const panoramaNames=[
+  "lakeside_sunset_panorama_1.png",
+  "lakeside_sunset_panorama_3.png",
+  "lakeside_sunset_panorama_4.png",
+  "lakeside_sunset_panorama_5.png",
+  "lakeside_sunset_panorama_0.png",
+  "lakeside_sunset_panorama_2.png"
+];
+
+const panoramaMaterials=panoramaNames.map(name=>{
+  const texture=textureLoader.load(new URL(`../${name}`,import.meta.url).href);
+  texture.colorSpace=THREE.SRGBColorSpace;
+  texture.magFilter=THREE.LinearFilter;
+  texture.minFilter=THREE.LinearFilter;
+  return new THREE.MeshBasicMaterial({map:texture,side:THREE.BackSide});
+});
+
+const panoramaCube=new THREE.Mesh(new THREE.BoxGeometry(2,2,2),panoramaMaterials);
+panoramaCube.scale.set(5,5,5);
+panoramaCube.rotation.order="YXZ";
+menuScene.add(panoramaCube);
+
 const keys=new Set();
 const raycaster=new THREE.Raycaster();
 raycaster.far=8;
@@ -42,8 +69,6 @@ let grounded=false;
 let spaceWasDown=false;
 let lastLooking="";
 let menuOpen=true;
-let panoramaTexture=null;
-
 const clock=new THREE.Clock();
 
 function makeSky(){
@@ -89,29 +114,13 @@ function makeSky(){
 const sky=makeSky();
 scene.add(sky);
 
-const panoramaUrls=[
-  "lakeside_sunset_panorama_0.png",
-  "lakeside_sunset_panorama_1.png",
-  "lakeside_sunset_panorama_2.png",
-  "lakeside_sunset_panorama_3.png",
-  "lakeside_sunset_panorama_4.png",
-  "lakeside_sunset_panorama_5.png"
-].map(name=>new URL(`../${name}`,import.meta.url).href);
-
-new THREE.CubeTextureLoader().load(panoramaUrls,texture=>{
-  texture.colorSpace=THREE.SRGBColorSpace;
-  panoramaTexture=texture;
-  if(menuOpen)scene.background=panoramaTexture;
-});
-
 function setMenu(open){
   menuOpen=open;
   menu.classList.toggle("hidden",!open);
+  help.classList.toggle("hidden",open);
   if(open){
-    scene.background=panoramaTexture??new THREE.Color(0x111111);
     controls.unlock();
   }else{
-    scene.background=null;
     controls.lock();
   }
 }
@@ -135,18 +144,29 @@ function nextFilled(direction){
   if(!inventory.some(Boolean))return;
   for(let step=1;step<=inventory.length;step++){
     const index=(selected+direction*step+inventory.length*10)%inventory.length;
-    if(inventory[index]){selected=index;renderHotbar();updateTargetText();return;}
+    if(inventory[index]){
+      selected=index;
+      renderHotbar();
+      updateTargetText();
+      return;
+    }
   }
 }
 
 function addItem(type){
   const existing=inventory.find(item=>item?.type===type);
-  if(existing){existing.count++;renderHotbar();return true;}
+  if(existing){
+    existing.count++;
+    renderHotbar();
+    return true;
+  }
+
   const empty=inventory.findIndex(item=>!item);
   if(empty<0)return false;
   inventory[empty]={type,count:1};
   selected=empty;
   renderHotbar();
+  updateTargetText();
   return true;
 }
 
@@ -173,11 +193,9 @@ function breakBlock(){
   const block=hit&&world.blockFromHit(hit);
   if(!block)return;
   const type=world.get(block.x,block.y,block.z);
-  if(!type)return;
-  if(!addItem(type))return;
+  if(!type||!addItem(type))return;
   if(!world.removeBlock(block.x,block.y,block.z)){
-    inventory[selected]=null;
-    renderHotbar();
+    removeSelected();
   }
 }
 
@@ -195,6 +213,7 @@ function placeBlock(){
   const item=inventory[selected];
   const hit=centerHit();
   if(!item||!hit?.face)return;
+
   const block=world.blockFromHit(hit);
   if(!block)return;
 
@@ -239,6 +258,7 @@ function moveVertical(dy){
   const oldY=camera.position.y;
   const nextY=oldY+dy;
   camera.position.y=nextY;
+
   if(!collide())return {hit:false};
 
   let lo,hi;
@@ -305,10 +325,26 @@ function update(dt){
   updateTarget();
 }
 
+function animateMenu(dt){
+  const time=performance.now();
+  panoramaCube.rotation.x=-THREE.MathUtils.degToRad(8+Math.sin(time/4000)*4);
+  panoramaCube.rotation.y=THREE.MathUtils.degToRad(-time*.004);
+  menuCamera.aspect=innerWidth/innerHeight;
+  menuCamera.updateProjectionMatrix();
+  void dt;
+}
+
 function loop(){
   requestAnimationFrame(loop);
   const dt=Math.min(clock.getDelta(),.05);
-  if(controls.isLocked&&!menuOpen)update(dt);
+
+  if(menuOpen){
+    animateMenu(dt);
+    renderer.render(menuScene,menuCamera);
+    return;
+  }
+
+  if(controls.isLocked)update(dt);
   sky.position.copy(camera.position);
   renderer.render(scene,camera);
 }
@@ -316,32 +352,30 @@ function loop(){
 addEventListener("resize",()=>{
   camera.aspect=innerWidth/innerHeight;
   camera.updateProjectionMatrix();
+  menuCamera.aspect=innerWidth/innerHeight;
+  menuCamera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight,false);
 });
 
 addEventListener("keydown",event=>{
   if(event.code==="Space")event.preventDefault();
   keys.add(event.code);
-  if(event.code==="Digit1")selectSlot(0);
-  if(event.code==="Digit2")selectSlot(1);
-  if(event.code==="Digit3")selectSlot(2);
-  if(event.code==="Digit4")selectSlot(3);
-  if(event.code==="Digit5")selectSlot(4);
-  if(event.code==="Digit6")selectSlot(5);
-  if(event.code==="Digit7")selectSlot(6);
-  if(event.code==="Digit8")selectSlot(7);
-  if(event.code==="Digit9")selectSlot(8);
+
+  const digit=event.code.match(/^Digit([1-9])$/);
+  if(digit)selectSlot(Number(digit[1])-1);
 });
 
 addEventListener("keyup",event=>keys.delete(event.code));
 
 canvas.addEventListener("click",()=>{if(!menuOpen)controls.lock()});
 canvas.addEventListener("contextmenu",event=>event.preventDefault());
+
 canvas.addEventListener("mousedown",event=>{
   if(!controls.isLocked||menuOpen)return;
   if(event.button===0)breakBlock();
   if(event.button===2)placeBlock();
 });
+
 canvas.addEventListener("wheel",event=>{
   if(!controls.isLocked||menuOpen)return;
   event.preventDefault();
@@ -351,6 +385,7 @@ canvas.addEventListener("wheel",event=>{
 controls.addEventListener("lock",()=>{
   if(!menuOpen)help.classList.add("hidden");
 });
+
 controls.addEventListener("unlock",()=>{
   if(!menuOpen)help.classList.remove("hidden");
 });
