@@ -17,31 +17,43 @@
 </head>
 <body>
   <canvas id="game" tabindex="0"></canvas>
+
+  <div id="menu">
+    <div class="menu-card">
+      <div class="menu-title">IMUX</div>
+      <div class="menu-subtitle">WEB VOXEL PROTOTYPE</div>
+      <button id="play" type="button">PLAY</button>
+    </div>
+  </div>
+
   <div id="crosshair" aria-hidden="true"></div>
   <div id="hud">
     <div id="status">IMUX • DEV BUILD</div>
     <div id="target"></div>
   </div>
+
   <div id="hotbar" aria-label="Hotbar">
-    <button class="slot selected" data-index="0" aria-label="Slot 1">1</button>
-    <button class="slot" data-index="1" aria-label="Slot 2">2</button>
-    <button class="slot" data-index="2" aria-label="Slot 3">3</button>
-    <button class="slot" data-index="3" aria-label="Slot 4">4</button>
-    <button class="slot" data-index="4" aria-label="Slot 5">5</button>
-    <button class="slot" data-index="5" aria-label="Slot 6">6</button>
-    <button class="slot" data-index="6" aria-label="Slot 7">7</button>
-    <button class="slot" data-index="7" aria-label="Slot 8">8</button>
-    <button class="slot" data-index="8" aria-label="Slot 9">9</button>
+    <button class="slot selected" data-index="0" aria-label="Slot"></button>
+    <button class="slot" data-index="1" aria-label="Slot"></button>
+    <button class="slot" data-index="2" aria-label="Slot"></button>
+    <button class="slot" data-index="3" aria-label="Slot"></button>
+    <button class="slot" data-index="4" aria-label="Slot"></button>
+    <button class="slot" data-index="5" aria-label="Slot"></button>
+    <button class="slot" data-index="6" aria-label="Slot"></button>
+    <button class="slot" data-index="7" aria-label="Slot"></button>
+    <button class="slot" data-index="8" aria-label="Slot"></button>
   </div>
+
   <div id="help">
     <strong>Click to play</strong>
     <span>WASD move</span>
     <span>Space jump</span>
     <span>LMB break</span>
     <span>RMB place</span>
-    <span>1–9 select</span>
+    <span>Mouse wheel select</span>
     <span>Esc release mouse</span>
   </div>
+
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
