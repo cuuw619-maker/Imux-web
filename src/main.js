@@ -592,7 +592,15 @@ tuningReset.addEventListener("click",()=>{
   tuningStatus.textContent="Defaults restored";
 });
 
-function overlapsPlayer{
+function overlapsPlayer(x,y,z,type){
+  const box=playerAABB();
+  const h=world.blockHeight(type);
+  return x<box.maxX&&x+1>box.minX&&
+    y<box.maxY&&y+h>box.minY&&
+    z<box.maxZ&&z+1>box.minZ;
+}
+
+function placeBlock(){
   const item=hotbarItem(selected);
   const hit=hitBlock();
   if(!item||!hit?.face)return;
