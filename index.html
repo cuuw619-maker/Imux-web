@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#111">
-  <meta name="description" content="Imux Web - browser voxel game prototype">
+  <meta name="description" content="Imux Web voxel game">
   <title>Imux Web</title>
   <link rel="stylesheet" href="./style.css">
   <script type="importmap">
@@ -19,39 +19,65 @@
   <canvas id="game" tabindex="0"></canvas>
 
   <div id="menu">
+    <div id="menu-overlay"></div>
     <div class="menu-card">
       <div class="menu-title">IMUX</div>
-      <div class="menu-subtitle">WEB VOXEL PROTOTYPE</div>
+      <div class="menu-subtitle">WEB VOXEL GAME</div>
       <button id="play" type="button">PLAY</button>
     </div>
   </div>
 
-  <div id="crosshair" aria-hidden="true"></div>
+  <div id="crosshair"><img src="./assets/minecraft/textures/gui/crosshair.png" alt=""></div>
+
+  <div id="attack-indicator" class="hidden" aria-hidden="true">
+    <img id="attack-background" src="./assets/minecraft/textures/gui/crosshair_attack_indicator_background.png" alt="">
+    <img id="attack-progress" src="./assets/minecraft/textures/gui/crosshair_attack_indicator_progress.png" alt="">
+    <img id="attack-full" class="hidden" src="./assets/minecraft/textures/gui/crosshair_attack_indicator_full.png" alt="">
+  </div>
+
   <div id="hud">
     <div id="status">IMUX • DEV BUILD</div>
     <div id="target"></div>
   </div>
 
+  <div id="hunger" aria-label="Hunger">
+    <span class="hunger-icon"></span><span class="hunger-icon"></span>
+    <span class="hunger-icon"></span><span class="hunger-icon"></span>
+    <span class="hunger-icon"></span><span class="hunger-icon"></span>
+    <span class="hunger-icon"></span><span class="hunger-icon"></span>
+    <span class="hunger-icon"></span><span class="hunger-icon"></span>
+  </div>
+
+  <div id="offhand-left" class="hidden"><img src="./assets/minecraft/textures/gui/hotbar_offhand_left.png" alt=""></div>
+  <div id="offhand-right" class="hidden"><img src="./assets/minecraft/textures/gui/hotbar_offhand_right.png" alt=""></div>
+
   <div id="hotbar" aria-label="Hotbar">
-    <button class="slot selected" data-index="0" aria-label="Slot"></button>
-    <button class="slot" data-index="1" aria-label="Slot"></button>
-    <button class="slot" data-index="2" aria-label="Slot"></button>
-    <button class="slot" data-index="3" aria-label="Slot"></button>
-    <button class="slot" data-index="4" aria-label="Slot"></button>
-    <button class="slot" data-index="5" aria-label="Slot"></button>
-    <button class="slot" data-index="6" aria-label="Slot"></button>
-    <button class="slot" data-index="7" aria-label="Slot"></button>
-    <button class="slot" data-index="8" aria-label="Slot"></button>
+    <button class="slot selected" type="button"></button>
+    <button class="slot" type="button"></button>
+    <button class="slot" type="button"></button>
+    <button class="slot" type="button"></button>
+    <button class="slot" type="button"></button>
+    <button class="slot" type="button"></button>
+    <button class="slot" type="button"></button>
+    <button class="slot" type="button"></button>
+    <button class="slot" type="button"></button>
+  </div>
+
+  <div id="inventory" class="hidden">
+    <div id="inventory-window">
+      <div id="inventory-slots"></div>
+    </div>
   </div>
 
   <div id="help">
     <strong>Click to play</strong>
-    <span>WASD move</span>
-    <span>Space jump</span>
+    <span>WASD</span>
+    <span>Space</span>
     <span>LMB break</span>
     <span>RMB place</span>
-    <span>Mouse wheel select</span>
-    <span>Esc release mouse</span>
+    <span>Wheel select</span>
+    <span>E inventory</span>
+    <span>Esc release</span>
   </div>
 
   <script type="module" src="./src/main.js"></script>

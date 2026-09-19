@@ -1,99 +1,83 @@
 # Imux Web
 
-Браузерная voxel-основа Imux на Three.js.
+Web voxel prototype of Imux.
 
 GitHub Pages: https://cuuw619-maker.github.io/Imux-web/
 
-## Сейчас
+## Texture layout
 
-Используется небольшая рабочая архитектура без сборщика: index.html -> src/main.js -> src/world.js / src/blocks.js.
+Resources are stored under the Minecraft-style namespace:
 
-В игре уже есть:
+assets/minecraft/textures/block/
+assets/minecraft/textures/gui/
+assets/minecraft/textures/gui/container/
+assets/minecraft/textures/gui/title/background/
+assets/minecraft/textures/colormap/
 
-- FPS-камера через Pointer Lock.
-- Правильное направление WASD: W вперёд, S назад.
-- Прыжок и гравитация.
-- Объёмная AABB-коллизия игрока с блоками.
-- Raycast из центра экрана.
-- ЛКМ ломает блок.
-- ПКМ ставит выбранный блок.
-- После разрушения блок попадает в пустой слот hotbar.
-- При старте hotbar пустой.
-- Колесо мыши переключает полученные блоки.
-- Номера клавиш выбирают слот, но цифры не рисуются поверх интерфейса.
-- InstancedMesh для рендера большого количества блоков.
-- Отдельные материалы для верхней, боковых и нижней граней grass block.
-- dirt.png, stone.png, cobblestone.png, coarse_dirt.png, rooted_dirt.png, dirt_path_top.png, dirt_path_side.png, bedrock.png.
-- Minecraft-подобные hotbar.png, hotbar_selection.png и crosshair.png.
+Block textures are addressed by block face instead of applying one flat texture to every face.
 
-## Панорама
+Grass block:
+- grass_block_top.png — grayscale top mask, multiplied by the biome grass colormap.
+- dirt.png — normal dirt base for the bottom and side base.
+- grass_block_side_overlay.png — transparent grayscale grass edge overlay, tinted by the biome colormap.
+- grass_block_snow.png — snow-covered side texture reserved for the snow state.
 
-Файлы lakeside_sunset_panorama_0.png ... lakeside_sunset_panorama_5.png используются только главным меню.
+Ordinary blocks are rendered without tinting: dirt, coarse_dirt, rooted_dirt, stone, cobblestone and bedrock.
 
-Они больше не назначаются фоном игрового мира. Для игрового неба используется отдельный процедурный shader sky.
+Dirt path uses dirt_path_top.png and dirt_path_side.png and is 15/16 block high.
 
-Раскладка panorama сделана отдельным cube renderer с порядком граней 1, 3, 4, 5, 0, 2.
+The biome lookup texture is assets/minecraft/textures/colormap/grass.png. The current project uses it as a small local LUT so the shader samples a real texture instead of hard-coding one green color.
 
-## Текстуры блоков
+## Menu panorama
 
-Для grass block используются отдельные роли текстур:
+lakeside_sunset_panorama_0.png ... lakeside_sunset_panorama_5.png are used only by the main menu.
 
-- grass_block_top — верх.
-- grass_block_side — боковые стороны.
-- dirt — низ.
+Panorama face mapping:
+0 = right, 1 = left, 2 = top, 3 = bottom, 4 = front, 5 = back.
 
-В загруженном наборе не было файлов grass_block_top.png и grass_block_side.png, поэтому эти две 16x16 текстуры встроены непосредственно в blocks.js, а остальные материалы берутся из добавленных PNG.
+The panorama rotates slowly around Y. lakeside_sunset_panorama_overlay.png is drawn above it as a 2D alpha overlay.
 
-Для остальных блоков используется соответствующая texture-name схема: stone, dirt, cobblestone, coarse_dirt, rooted_dirt, dirt_path_top, dirt_path_side, bedrock.
+The gameplay sky is a separate procedural shader and never uses the menu panorama.
 
-## Управление
+## HUD
 
-WASD — движение.
+crosshair.png is rendered in the center with difference blending so its white pixels invert the background.
 
-Space — прыжок.
+crosshair_attack_indicator_background.png, progress.png and full.png are used by the attack indicator.
 
-ЛКМ — разрушить блок.
+food_full.png, food_half.png and food_empty.png render the normal 20-point hunger bar. The *_hunger variants are available for a future Hunger effect state.
 
-ПКМ — поставить блок.
+hotbar.png is the 9-slot background. hotbar_selection.png moves with the selected slot. Offhand textures are hidden while the second hand is empty.
 
-Колесо мыши — переключить полученные блоки.
+inventory.png is the 176x166 inventory background. Slot positions are calculated in JavaScript.
 
-Цифровые клавиши — выбрать слот.
+## Controls
 
-Esc — отпустить мышь.
+WASD — movement.
+Space — jump.
+LMB — break block.
+RMB — place block.
+Mouse wheel — change hotbar slot.
+1-9 — select hotbar slot.
+E — open/close inventory.
+Esc — release mouse.
 
-## Структура
+Hotbar starts empty. Breaking blocks adds them to the inventory.
 
-Imux-web/
-  index.html
-  style.css
-  README.md
-  src/
-    main.js
-    blocks.js
-    world.js
-  *.png
+## Project
 
-## Локальный запуск
+index.html loads the browser entry point.
+src/main.js contains the renderer, input, FPS controller, menu, HUD, inventory and interaction loop.
+src/world.js contains voxel data, generation, collision, instanced rendering and block edits.
+src/blocks.js contains block definitions, texture paths and grass tint materials.
+
+## Run locally
 
 python -m http.server 8000
 
-Открыть http://localhost:8000/
+Open http://localhost:8000/
 
-Three.js подключается через jsDelivr. Браузеру также требуется поддержка ES modules и Pointer Lock.
-
-## Дальше
-
-1. Chunk system и генерация мира вокруг игрока.
-2. Face culling / greedy meshing.
-3. Полная inventory-система.
-4. Отдельные верх/низ/бок текстуры для всех блоков.
-5. Pause menu и настройки.
-6. IndexedDB-сохранение мира.
-7. Worker-based generation.
-8. Вода, освещение, частицы, звук и world-time.
-
-## Репозиторий
+## Repository
 
 https://github.com/cuuw619-maker/Imux-web
 

@@ -1,5 +1,5 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
-import {BLOCKS,createMaterials} from "./blocks.js";
+import {BLOCKS,createMaterials,blockHeight} from "./blocks.js";
 
 export class World{
   constructor(scene){
@@ -8,9 +8,12 @@ export class World{
     this.data=new Map();
     this.top=new Map();
     this.materials=createMaterials();
-    this.geometry=new THREE.BoxGeometry(1,1,1);
+    this.cubeGeometry=new THREE.BoxGeometry(1,1,1);
+    this.pathGeometry=new THREE.BoxGeometry(1,15/16,1);
     this.meshes={};
+    this.grassOverlays=[];
     this.instanceBlocks={};
+    this.raycastObjects=[];
     this.build();
     this.rebuildMeshes();
     this.addLighting();
@@ -20,6 +23,7 @@ export class World{
   columnKey(x,z){return `${x}|${z}`}
   get(x,y,z){return this.data.get(this.key(x,y,z))??null}
   isSolid(x,y,z){return this.data.has(this.key(x,y,z))}
+  blockHeight(type){return blockHeight(type)}
 
   set(x,y,z,type){
     if(BLOCKS[type])this.data.set(this.key(x,y,z),type);
@@ -27,6 +31,13 @@ export class World{
 
   heightAt(x,z){
     return this.top.get(this.columnKey(Math.floor(x),Math.floor(z)))??-1;
+  }
+
+  surfaceAt(x,z){
+    const X=Math.floor(x),Z=Math.floor(z);
+    const y=this.heightAt(X,Z);
+    if(y<0)return 0;
+    return y+blockHeight(this.get(X,y,Z));
   }
 
   terrainHeight(x,z){
@@ -49,26 +60,46 @@ export class World{
     }
   }
 
-  collidesPlayer(px,eyeY,pz,radius,heightOffset,height){
-    const minX=px-radius;
-    const maxX=px+radius;
-    const minY=eyeY-heightOffset;
-    const maxY=minY+height;
-    const minZ=pz-radius;
-    const maxZ=pz+radius;
+  biomeAt(x,z){
+    const temperature=.5+.5*Math.sin(x*.011+z*.007);
+    const rainfall=.5+.5*Math.cos(x*.008-z*.013);
+    return [
+      THREE.MathUtils.clamp(temperature,.01,.99),
+      THREE.MathUtils.clamp(rainfall,.01,.99)
+    ];
+  }
 
-    const x0=Math.floor(minX);
-    const x1=Math.floor(maxX-0.000001);
-    const y0=Math.floor(minY);
-    const y1=Math.floor(maxY-0.000001);
-    const z0=Math.floor(minZ);
-    const z1=Math.floor(maxZ-0.000001);
+  addBiomeAttribute(geometry,blocks){
+    const values=new Float32Array(blocks.length*2);
+    for(let i=0;i<blocks.length;i++){
+      const [u,v]=this.biomeAt(blocks[i].x,blocks[i].z);
+      values[i*2]=u;
+      values[i*2+1]=v;
+    }
+    geometry.setAttribute(
+      "aBiome",
+      new THREE.InstancedBufferAttribute(values,2)
+    );
+  }
+
+  collidesPlayer(px,eyeY,pz,radius,heightOffset,height){
+    const minX=px-radius,maxX=px+radius;
+    const minY=eyeY-heightOffset,maxY=minY+height;
+    const minZ=pz-radius,maxZ=pz+radius;
+
+    const x0=Math.floor(minX),x1=Math.floor(maxX-1e-6);
+    const y0=Math.floor(minY),y1=Math.floor(maxY-1e-6);
+    const z0=Math.floor(minZ),z1=Math.floor(maxZ-1e-6);
 
     for(let x=x0;x<=x1;x++){
       for(let y=y0;y<=y1;y++){
         for(let z=z0;z<=z1;z++){
-          if(!this.isSolid(x,y,z))continue;
-          if(maxX>x&&minX<x+1&&maxY>y&&minY<y+1&&maxZ>z&&minZ<z+1)return true;
+          const type=this.get(x,y,z);
+          if(!type)continue;
+          const h=blockHeight(type);
+          if(maxX>x&&minX<x+1&&maxY>y&&minY<y+h&&maxZ>z&&minZ<z+1){
+            return true;
+          }
         }
       }
     }
@@ -105,8 +136,12 @@ export class World{
 
   rebuildMeshes(){
     for(const mesh of Object.values(this.meshes))this.scene.remove(mesh);
+    for(const mesh of this.grassOverlays)this.scene.remove(mesh);
+
     this.meshes={};
+    this.grassOverlays=[];
     this.instanceBlocks={};
+    this.raycastObjects=[];
 
     const grouped={};
     for(const [key,type] of this.data){
@@ -114,22 +149,67 @@ export class World{
     }
 
     const matrix=new THREE.Matrix4();
-    for(const [type,keys] of Object.entries(grouped)){
-      const mesh=new THREE.InstancedMesh(this.geometry,this.materials[type],keys.length);
-      mesh.frustumCulled=false;
-      mesh.userData.blockType=type;
-      this.instanceBlocks[type]=[];
 
-      keys.forEach((key,index)=>{
+    for(const [type,keys] of Object.entries(grouped)){
+      const blocks=keys.map(key=>{
         const [x,y,z]=key.split("|").map(Number);
-        matrix.makeTranslation(x+.5,y+.5,z+.5);
-        mesh.setMatrixAt(index,matrix);
-        this.instanceBlocks[type][index]={x,y,z};
+        return {x,y,z};
       });
 
+      const geometry=(type==="dirt_path"?this.pathGeometry:this.cubeGeometry).clone();
+      const mesh=new THREE.InstancedMesh(
+        geometry,
+        this.materials[type],
+        blocks.length
+      );
+      mesh.frustumCulled=false;
+      mesh.userData.blockType=type;
+      this.instanceBlocks[type]=blocks;
+
+      for(let i=0;i<blocks.length;i++){
+        const b=blocks[i];
+        matrix.makeTranslation(
+          b.x+.5,
+          b.y+(blockHeight(type)/2),
+          b.z+.5
+        );
+        mesh.setMatrixAt(i,matrix);
+      }
+
       mesh.instanceMatrix.needsUpdate=true;
+
+      if(type==="grass"){
+        this.addBiomeAttribute(geometry,blocks);
+      }
+
       this.meshes[type]=mesh;
+      this.raycastObjects.push(mesh);
       this.scene.add(mesh);
+
+      if(type==="grass"){
+        const overlayGeometry=this.cubeGeometry.clone();
+        this.addBiomeAttribute(overlayGeometry,blocks);
+
+        const overlay=new THREE.InstancedMesh(
+          overlayGeometry,
+          this.materials.grassOverlay,
+          blocks.length
+        );
+        overlay.frustumCulled=false;
+        overlay.renderOrder=2;
+        overlay.userData.blockType=type;
+
+        for(let i=0;i<blocks.length;i++){
+          const b=blocks[i];
+          matrix.makeTranslation(b.x+.5,b.y+.5,b.z+.5);
+          overlay.setMatrixAt(i,matrix);
+        }
+
+        overlay.instanceMatrix.needsUpdate=true;
+        this.grassOverlays.push(overlay);
+        this.raycastObjects.push(overlay);
+        this.scene.add(overlay);
+      }
     }
   }
 
@@ -139,8 +219,8 @@ export class World{
   }
 
   addLighting(){
-    this.scene.add(new THREE.HemisphereLight(0xddeeff,0x554433,2.0));
-    const sun=new THREE.DirectionalLight(0xffffff,2.2);
+    this.scene.add(new THREE.HemisphereLight(0xddeeff,0x554433,1.9));
+    const sun=new THREE.DirectionalLight(0xffffff,2.25);
     sun.position.set(30,60,20);
     this.scene.add(sun);
   }
