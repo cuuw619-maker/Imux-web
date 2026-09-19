@@ -1,12 +1,61 @@
 # Imux Web
 
-Web voxel prototype of Imux.
+Браузерная voxel-основа Imux на Three.js.
 
 GitHub Pages: https://cuuw619-maker.github.io/Imux-web/
 
-## Texture layout
+## Игровая база
 
-Resources are stored under the Minecraft-style namespace:
+- Minecraft-style движение с ускорением, трением и отдельной скоростью ходьбы/спринта.
+- Shift — sprint.
+- Ctrl — sneak.
+- Space — jump.
+- LMB — break block.
+- RMB — place block.
+- Колесо — смена hotbar slot.
+- E — inventory.
+- Esc — release mouse.
+- Объёмная AABB-коллизия игрока с блоками.
+- Автоматический step-up до 0.6 блока.
+
+## Chunk streaming
+
+Мир больше не является одной заранее созданной плоскостью.
+
+- Размер чанка: 16x16 блоков.
+- Высота мира: 40 блоков.
+- Дальность загрузки: 4 чанка от текущего чанка игрока.
+- Чанки генерируются детерминированным procedural noise.
+- Дальние чанки выгружаются.
+- Внутренние полностью закрытые блоки не добавляются в chunk render.
+- Для групп одинаковых блоков используется InstancedMesh.
+
+При переходе игрока через границу чанка новые области автоматически загружаются, а старые выгружаются.
+
+## Panorama главного меню
+
+Файлы lakeside_sunset_panorama_0.png ... lakeside_sunset_panorama_5.png используются только меню.
+
+Камера стоит в центре куба.
+
+Для Three.js BoxGeometry используется точная матрица:
+
+- +X = _3.png = East / Left.
+- -X = _1.png = West / Right.
+- +Y = _4.png = Up / Top.
+- -Y = _5.png = Down / Bottom.
+- +Z = _0.png = South / Front.
+- -Z = _2.png = North / Back.
+
+Начальный взгляд камеры направлен на South (+Z). Затем камера медленно вращается вокруг Y примерно на 2.4 градуса в секунду, что соответствует заданному диапазону на типичной частоте кадров.
+
+lakeside_sunset_panorama_overlay.png находится над canvas как 2D overlay с альфа-смешиванием и небольшим backdrop blur.
+
+Игровое небо — отдельный procedural shader. Menu panorama в него не попадает.
+
+## Texture pipeline
+
+Ресурсы расположены в:
 
 assets/minecraft/textures/block/
 assets/minecraft/textures/gui/
@@ -14,70 +63,49 @@ assets/minecraft/textures/gui/container/
 assets/minecraft/textures/gui/title/background/
 assets/minecraft/textures/colormap/
 
-Block textures are addressed by block face instead of applying one flat texture to every face.
-
 Grass block:
-- grass_block_top.png — grayscale top mask, multiplied by the biome grass colormap.
-- dirt.png — normal dirt base for the bottom and side base.
-- grass_block_side_overlay.png — transparent grayscale grass edge overlay, tinted by the biome colormap.
-- grass_block_snow.png — snow-covered side texture reserved for the snow state.
 
-Ordinary blocks are rendered without tinting: dirt, coarse_dirt, rooted_dirt, stone, cobblestone and bedrock.
+- grass_block_top.png — grayscale top texture, умножаемая на biome grass colormap.
+- dirt.png — базовая боковая и нижняя текстура.
+- grass_block_side_overlay.png — отдельный grayscale grass overlay для боков, также tint-ится colormap.
+- grass_block_snow.png — отдельная snow-side texture для будущего snow state.
 
-Dirt path uses dirt_path_top.png and dirt_path_side.png and is 15/16 block high.
+Обычные блоки не получают green tint.
 
-The biome lookup texture is assets/minecraft/textures/colormap/grass.png. The current project uses it as a small local LUT so the shader samples a real texture instead of hard-coding one green color.
-
-## Menu panorama
-
-lakeside_sunset_panorama_0.png ... lakeside_sunset_panorama_5.png are used only by the main menu.
-
-Panorama face mapping:
-0 = right, 1 = left, 2 = top, 3 = bottom, 4 = front, 5 = back.
-
-The panorama rotates slowly around Y. lakeside_sunset_panorama_overlay.png is drawn above it as a 2D alpha overlay.
-
-The gameplay sky is a separate procedural shader and never uses the menu panorama.
+dirt_path_top.png и dirt_path_side.png используются для блока высотой 15/16.
 
 ## HUD
 
-crosshair.png is rendered in the center with difference blending so its white pixels invert the background.
+crosshair.png выводится через difference blending.
 
-crosshair_attack_indicator_background.png, progress.png and full.png are used by the attack indicator.
+Attack indicator использует background/progress/full.
 
-food_full.png, food_half.png and food_empty.png render the normal 20-point hunger bar. The *_hunger variants are available for a future Hunger effect state.
+10 hunger icons используют full/half/empty и варианты *_hunger.
 
-hotbar.png is the 9-slot background. hotbar_selection.png moves with the selected slot. Offhand textures are hidden while the second hand is empty.
+hotbar.png — фон 9 слотов; hotbar_selection.png — рамка выбора; offhand показывается только когда вторая рука занята.
 
-inventory.png is the 176x166 inventory background. Slot positions are calculated in JavaScript.
+inventory.png — фон окна 176x166; сетка слотов строится программно.
 
-## Controls
+## Структура
 
-WASD — movement.
-Space — jump.
-LMB — break block.
-RMB — place block.
-Mouse wheel — change hotbar slot.
-1-9 — select hotbar slot.
-E — open/close inventory.
-Esc — release mouse.
+Imux-web/
+  index.html
+  style.css
+  README.md
+  src/
+    main.js
+    world.js
+    chunk.js
+    blocks.js
+  assets/minecraft/textures/
 
-Hotbar starts empty. Breaking blocks adds them to the inventory.
-
-## Project
-
-index.html loads the browser entry point.
-src/main.js contains the renderer, input, FPS controller, menu, HUD, inventory and interaction loop.
-src/world.js contains voxel data, generation, collision, instanced rendering and block edits.
-src/blocks.js contains block definitions, texture paths and grass tint materials.
-
-## Run locally
+## Локальный запуск
 
 python -m http.server 8000
 
-Open http://localhost:8000/
+Открыть http://localhost:8000/
 
-## Repository
+## Репозиторий
 
 https://github.com/cuuw619-maker/Imux-web
 
