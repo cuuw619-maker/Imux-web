@@ -7,6 +7,7 @@ const canvas=document.querySelector("#game");
 const help=document.querySelector("#help");
 const targetLabel=document.querySelector("#target");
 const menu=document.querySelector("#menu");
+const menuOverlay=document.querySelector("#menu-overlay");
 const playButton=document.querySelector("#play");
 const inventoryPanel=document.querySelector("#inventory");
 const inventorySlots=document.querySelector("#inventory-slots");
@@ -26,27 +27,50 @@ renderer.setSize(innerWidth,innerHeight,false);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 
 const scene=new THREE.Scene();
+scene.background=null;
+
 const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,180);
 const controls=new PointerLockControls(camera,canvas);
+controls.minPolarAngle=.01;
+controls.maxPolarAngle=Math.PI-.01;
+
 const world=new World(scene);
+world.updateAround(0,0);
 
 const PLAYER_RADIUS=.30;
 const PLAYER_HEIGHT=1.80;
 const EYE_HEIGHT=1.62;
-const MOVE_SPEED=5.2;
-const GRAVITY=18;
-const JUMP_SPEED=7;
-const WORLD_LIMIT=31.5;
+const SNEAK_HEIGHT=1.50;
+const SNEAK_EYE_HEIGHT=1.27;
+const WALK_SPEED=4.317;
+const SPRINT_SPEED=5.612;
+const SNEAK_SPEED=1.295;
+const JUMP_SPEED=8.0;
+const GRAVITY=32.0;
+const STEP_HEIGHT=.6;
+const GROUND_ACCELERATION=50;
+const AIR_ACCELERATION=12;
+const GROUND_FRICTION=12;
+const AIR_FRICTION=1.5;
+const WORLD_LIMIT=1024;
 
-camera.position.set(.5,world.surfaceAt(.5,.5)+EYE_HEIGHT+.03,.5);
+camera.position.set(.5,world.surfaceAt(.5,.5)+EYE_HEIGHT+.01,.5);
+let velocityY=0;
+let horizontalVelocity=new THREE.Vector3();
+let grounded=true;
+let sneaking=false;
+let sprinting=false;
+let wasSpaceDown=false;
 
 const menuScene=new THREE.Scene();
-const menuCamera=new THREE.PerspectiveCamera(100,innerWidth/innerHeight,.1,20);
+const menuCamera=new THREE.PerspectiveCamera(100,innerWidth/innerHeight,.1,100);
+menuCamera.position.set(0,0,0);
 menuCamera.rotation.order="YXZ";
 
 const textureLoader=new THREE.TextureLoader();
 const textureRoot=new URL("../assets/minecraft/textures/",import.meta.url);
-const texture=path=>{
+
+const loadUITexture=path=>{
   const t=textureLoader.load(new URL(path,textureRoot).href);
   t.colorSpace=THREE.SRGBColorSpace;
   t.magFilter=THREE.LinearFilter;
@@ -54,17 +78,22 @@ const texture=path=>{
   return t;
 };
 
-const panoramaNames=[
-  "gui/title/background/lakeside_sunset_panorama_0.png",
-  "gui/title/background/lakeside_sunset_panorama_1.png",
-  "gui/title/background/lakeside_sunset_panorama_2.png",
-  "gui/title/background/lakeside_sunset_panorama_3.png",
-  "gui/title/background/lakeside_sunset_panorama_4.png",
-  "gui/title/background/lakeside_sunset_panorama_5.png"
+// BoxGeometry material order:
+// +X, -X, +Y, -Y, +Z, -Z.
+// With South = +Z the requested mapping is:
+// 0=South(+Z), 1=West(-X), 2=North(-Z),
+// 3=East(+X), 4=Up(+Y), 5=Down(-Y).
+const panoramaFiles=[
+  "gui/title/background/lakeside_sunset_panorama_3.png", // +X = East / Left
+  "gui/title/background/lakeside_sunset_panorama_1.png", // -X = West / Right
+  "gui/title/background/lakeside_sunset_panorama_4.png", // +Y = Up
+  "gui/title/background/lakeside_sunset_panorama_5.png", // -Y = Down
+  "gui/title/background/lakeside_sunset_panorama_0.png", // +Z = South / Front
+  "gui/title/background/lakeside_sunset_panorama_2.png"  // -Z = North / Back
 ];
 
-const panoramaMaterials=panoramaNames.map(path=>new THREE.MeshBasicMaterial({
-  map:texture(path),
+const panoramaMaterials=panoramaFiles.map(path=>new THREE.MeshBasicMaterial({
+  map:loadUITexture(path),
   side:THREE.BackSide,
   depthWrite:false
 }));
@@ -73,8 +102,17 @@ const panoramaCube=new THREE.Mesh(
   new THREE.BoxGeometry(2,2,2),
   panoramaMaterials
 );
-panoramaCube.scale.set(7,7,7);
+panoramaCube.scale.setScalar(40);
 menuScene.add(panoramaCube);
+
+menuOverlay.style.backgroundImage=
+  `url("${new URL(
+    "gui/title/background/lakeside_sunset_panorama_overlay.png",
+    textureRoot
+  ).href}")`;
+
+const sky=makeSky();
+scene.add(sky);
 
 const keys=new Set();
 const raycaster=new THREE.Raycaster();
@@ -82,9 +120,6 @@ raycaster.far=7.5;
 const inventory=new Array(36).fill(null);
 
 let selected=0;
-let velocityY=0;
-let grounded=false;
-let spaceWasDown=false;
 let lastLooking="";
 let menuOpen=true;
 let inventoryOpen=false;
@@ -92,8 +127,13 @@ let hunger=20;
 let hungerEffect=false;
 let attackEnd=0;
 let attackFlashEnd=0;
+let lastChunkX=Infinity;
+let lastChunkZ=Infinity;
 
 const clock=new THREE.Clock();
+const forward=new THREE.Vector3();
+const right=new THREE.Vector3();
+const wish=new THREE.Vector3();
 
 function makeSky(){
   const geometry=new THREE.SphereGeometry(100,32,16);
@@ -123,9 +163,9 @@ function makeSky(){
       void main(){
         float h=clamp(vDirection.y*.5+.5,0.0,1.0);
         vec3 color=mix(horizonColor,topColor,pow(h,.72));
-        float s=max(dot(vDirection,sunDirection),0.0);
-        color+=sunColor*pow(s,180.0)*1.4;
-        color+=sunColor*pow(s,20.0)*.12;
+        float sun=max(dot(vDirection,sunDirection),0.0);
+        color+=sunColor*pow(sun,180.0)*1.4;
+        color+=sunColor*pow(sun,20.0)*.12;
         gl_FragColor=vec4(color,1.0);
       }
     `
@@ -135,23 +175,26 @@ function makeSky(){
   return mesh;
 }
 
-const sky=makeSky();
-scene.add(sky);
-
 function setMenu(open){
   menuOpen=open;
   menu.classList.toggle("hidden",!open);
-  help.classList.toggle("hidden",open);
-  if(open)controls.unlock();
-  else controls.lock();
+  help.classList.toggle("hidden",open||inventoryOpen);
+  if(open){
+    controls.unlock();
+  }else{
+    controls.lock();
+  }
 }
 
 function setInventory(open){
   inventoryOpen=open;
   inventoryPanel.classList.toggle("hidden",!open);
   help.classList.toggle("hidden",open||menuOpen);
-  if(open)controls.unlock();
-  else if(!menuOpen)controls.lock();
+  if(open){
+    controls.unlock();
+  }else if(!menuOpen){
+    controls.lock();
+  }
 }
 
 function hotbarItem(index){
@@ -161,7 +204,8 @@ function hotbarItem(index){
 function renderHotbar(){
   slots.forEach((slot,i)=>{
     const item=hotbarItem(i);
-    slot.style.backgroundImage=item?`url("${textureUrl(item.type)}")`:"none";
+    slot.style.backgroundImage=item?
+      `url("${textureUrl(item.type)}")`:"none";
     slot.classList.toggle("filled",!!item);
     slot.classList.toggle("selected",i===selected);
   });
@@ -173,18 +217,12 @@ function buildInventorySlots(){
   for(let i=0;i<36;i++){
     const slot=document.createElement("div");
     slot.className="inventory-slot";
-    slot.dataset.index=String(i);
 
-    if(i<27){
-      const row=Math.floor(i/9);
-      const column=i%9;
-      slot.style.left=`${8+column*18}px`;
-      slot.style.top=`${18+row*18}px`;
-    }else{
-      const column=i-27;
-      slot.style.left=`${8+column*18}px`;
-      slot.style.top="142px";
-    }
+    const row=i<27?Math.floor(i/9):3;
+    const column=i%9;
+
+    slot.style.left=`${8+column*18}px`;
+    slot.style.top=`${18+row*18}px`;
 
     const count=document.createElement("span");
     count.className="item-count";
@@ -196,8 +234,10 @@ function buildInventorySlots(){
 function renderInventory(){
   [...inventorySlots.children].forEach((slot,i)=>{
     const item=inventory[i];
-    slot.style.backgroundImage=item?`url("${textureUrl(item.type)}")`:"none";
-    slot.querySelector(".item-count").textContent=item&&item.count>1?String(item.count):"";
+    slot.style.backgroundImage=item?
+      `url("${textureUrl(item.type)}")`:"none";
+    slot.querySelector(".item-count").textContent=
+      item&&item.count>1?String(item.count):"";
   });
   renderHotbar();
 }
@@ -214,10 +254,6 @@ function nextSlot(direction){
   updateTargetText();
 }
 
-function canAddItem(type){
-  return inventory.some(item=>item?.type===type)||inventory.some(item=>!item);
-}
-
 function addItem(type){
   const existing=inventory.find(item=>item?.type===type);
   if(existing){
@@ -226,8 +262,8 @@ function addItem(type){
     return true;
   }
 
-  let index=inventory.findIndex((item,i)=>i>=27&&!item);
-  if(index<0)index=inventory.findIndex(item=>!item);
+  const hotbarEmpty=inventory.findIndex((item,i)=>i>=27&&!item);
+  const index=hotbarEmpty>=0?hotbarEmpty:inventory.findIndex(item=>!item);
   if(index<0)return false;
 
   inventory[index]={type,count:1};
@@ -247,7 +283,8 @@ function removeSelected(){
 }
 
 function updateTargetText(looking=lastLooking){
-  targetLabel.textContent=`selected: ${hotbarItem(selected)?.type??"empty"} | looking: ${looking||"air"}`;
+  targetLabel.textContent=
+    `selected: ${hotbarItem(selected)?.type??"empty"} | looking: ${looking||"air"}`;
 }
 
 function hitBlock(){
@@ -268,7 +305,8 @@ function updateAttack(){
 
   if(now<attackEnd){
     const p=1-(attackEnd-now)/260;
-    attackProgress.style.clipPath=`inset(${(1-p)*100}% 0 0 0)`;
+    attackProgress.style.clipPath=
+      `inset(${(1-p)*100}% 0 0 0)`;
     return;
   }
 
@@ -291,28 +329,33 @@ function breakBlock(){
   if(!block)return;
 
   const type=world.get(block.x,block.y,block.z);
-  if(!type||!canAddItem(type))return;
+  if(!type)return;
 
   if(world.removeBlock(block.x,block.y,block.z)){
     addItem(type);
   }
 }
 
-function playerBox(){
+function playerAABB(x=camera.position.x,y=camera.position.y,z=camera.position.z){
+  const eye=sneaking?SNEAK_EYE_HEIGHT:EYE_HEIGHT;
+  const height=sneaking?SNEAK_HEIGHT:PLAYER_HEIGHT;
+
   return {
-    minX:camera.position.x-PLAYER_RADIUS,
-    maxX:camera.position.x+PLAYER_RADIUS,
-    minY:camera.position.y-EYE_HEIGHT,
-    maxY:camera.position.y-EYE_HEIGHT+PLAYER_HEIGHT,
-    minZ:camera.position.z-PLAYER_RADIUS,
-    maxZ:camera.position.z+PLAYER_RADIUS
+    minX:x-PLAYER_RADIUS,
+    maxX:x+PLAYER_RADIUS,
+    minY:y-eye,
+    maxY:y-eye+height,
+    minZ:z-PLAYER_RADIUS,
+    maxZ:z+PLAYER_RADIUS
   };
 }
 
 function overlapsPlayer(x,y,z,type){
-  const p=playerBox();
+  const box=playerAABB();
   const h=world.blockHeight(type);
-  return x<p.maxX&&x+1>p.minX&&y<p.maxY&&y+h>p.minY&&z<p.maxZ&&z+1>p.minZ;
+  return x<box.maxX&&x+1>box.minX&&
+         y<box.maxY&&y+h>box.minY&&
+         z<box.maxZ&&z+1>box.minZ;
 }
 
 function placeBlock(){
@@ -323,13 +366,12 @@ function placeBlock(){
   const block=world.blockFromHit(hit);
   if(!block)return;
 
-  const n=hit.face.normal;
-  const x=block.x+Math.round(n.x);
-  const y=block.y+Math.round(n.y);
-  const z=block.z+Math.round(n.z);
+  const normal=hit.face.normal;
+  const x=block.x+Math.round(normal.x);
+  const y=block.y+Math.round(normal.y);
+  const z=block.z+Math.round(normal.z);
 
   if(overlapsPlayer(x,y,z,item.type))return;
-
   if(world.placeBlock(x,y,z,item.type)){
     removeSelected();
   }
@@ -342,61 +384,70 @@ function updateTarget(){
   updateTargetText();
 }
 
-function moveHorizontal(dx,dz){
-  const oldX=camera.position.x;
-  camera.position.x=THREE.MathUtils.clamp(
-    camera.position.x+dx,-WORLD_LIMIT,WORLD_LIMIT
+function collides(){
+  const eye=sneaking?SNEAK_EYE_HEIGHT:EYE_HEIGHT;
+  const height=sneaking?SNEAK_HEIGHT:PLAYER_HEIGHT;
+  return world.collidesPlayer(
+    camera.position.x,
+    camera.position.y,
+    camera.position.z,
+    PLAYER_RADIUS,
+    eye,
+    height
+  );
+}
+
+function tryMoveAxis(delta,axis){
+  if(!delta)return;
+
+  const old=camera.position[axis];
+  camera.position[axis]=THREE.MathUtils.clamp(
+    old+delta,-WORLD_LIMIT,WORLD_LIMIT
   );
 
-  if(world.collidesPlayer(
-    camera.position.x,camera.position.y,camera.position.z,
-    PLAYER_RADIUS,EYE_HEIGHT,PLAYER_HEIGHT
-  )){
-    camera.position.x=oldX;
+  if(!collides())return;
+
+  camera.position[axis]=old;
+
+  if(!grounded)return;
+
+  const oldY=camera.position.y;
+  camera.position.y+=STEP_HEIGHT;
+
+  if(collides()){
+    camera.position.y=oldY;
+    return;
   }
 
-  const oldZ=camera.position.z;
-  camera.position.z=THREE.MathUtils.clamp(
-    camera.position.z+dz,-WORLD_LIMIT,WORLD_LIMIT
+  camera.position[axis]=THREE.MathUtils.clamp(
+    old+delta,-WORLD_LIMIT,WORLD_LIMIT
   );
 
-  if(world.collidesPlayer(
-    camera.position.x,camera.position.y,camera.position.z,
-    PLAYER_RADIUS,EYE_HEIGHT,PLAYER_HEIGHT
-  )){
-    camera.position.z=oldZ;
+  if(collides()){
+    camera.position[axis]=old;
+    camera.position.y=oldY;
   }
 }
 
-function moveVertical(dy){
-  const oldY=camera.position.y;
-  camera.position.y=oldY+dy;
+function moveVertical(distance){
+  if(!distance)return;
 
-  if(!world.collidesPlayer(
-    camera.position.x,camera.position.y,camera.position.z,
-    PLAYER_RADIUS,EYE_HEIGHT,PLAYER_HEIGHT
-  )){
-    return false;
-  }
+  const oldY=camera.position.y;
+  camera.position.y=oldY+distance;
+
+  if(!collides())return false;
 
   let lo,hi;
 
-  if(dy<0){
+  if(distance<0){
     lo=camera.position.y;
     hi=oldY;
 
     for(let i=0;i<14;i++){
       const mid=(lo+hi)*.5;
       camera.position.y=mid;
-
-      if(world.collidesPlayer(
-        camera.position.x,mid,camera.position.z,
-        PLAYER_RADIUS,EYE_HEIGHT,PLAYER_HEIGHT
-      )){
-        lo=mid;
-      }else{
-        hi=mid;
-      }
+      if(collides())lo=mid;
+      else hi=mid;
     }
 
     camera.position.y=hi;
@@ -408,15 +459,8 @@ function moveVertical(dy){
     for(let i=0;i<14;i++){
       const mid=(lo+hi)*.5;
       camera.position.y=mid;
-
-      if(world.collidesPlayer(
-        camera.position.x,mid,camera.position.z,
-        PLAYER_RADIUS,EYE_HEIGHT,PLAYER_HEIGHT
-      )){
-        hi=mid;
-      }else{
-        lo=mid;
-      }
+      if(collides())hi=mid;
+      else lo=mid;
     }
 
     camera.position.y=lo;
@@ -426,38 +470,66 @@ function moveVertical(dy){
   return true;
 }
 
-function update(dt){
-  const forwardInput=(keys.has("KeyW")?1:0)-(keys.has("KeyS")?1:0);
-  const strafeInput=(keys.has("KeyD")?1:0)-(keys.has("KeyA")?1:0);
+function updatePlayer(dt){
+  sneaking=keys.has("ControlLeft")||keys.has("ControlRight");
+  sprinting=!sneaking&&
+    (keys.has("ShiftLeft")||keys.has("ShiftRight"))&&
+    (keys.has("KeyW")||keys.has("KeyS")||keys.has("KeyA")||keys.has("KeyD"));
 
-  const input=new THREE.Vector3(strafeInput,0,forwardInput);
-  if(input.lengthSq()>1)input.normalize();
+  const speed=sneaking?SNEAK_SPEED:(sprinting?SPRINT_SPEED:WALK_SPEED);
+  const acceleration=grounded?GROUND_ACCELERATION:AIR_ACCELERATION;
 
-  const forward=new THREE.Vector3();
+  const inputX=(keys.has("KeyD")?1:0)-(keys.has("KeyA")?1:0);
+  const inputZ=(keys.has("KeyW")?1:0)-(keys.has("KeyS")?1:0);
+
+  wish.set(inputX,0,inputZ);
+  if(wish.lengthSq()>1)wish.normalize();
+
   camera.getWorldDirection(forward);
   forward.y=0;
   if(forward.lengthSq())forward.normalize();
 
-  const right=new THREE.Vector3().crossVectors(
-    forward,new THREE.Vector3(0,1,0)
-  ).normalize();
+  right.crossVectors(forward,new THREE.Vector3(0,1,0)).normalize();
 
-  moveHorizontal(
-    (right.x*input.x+forward.x*input.z)*MOVE_SPEED*dt,
-    (right.z*input.x+forward.z*input.z)*MOVE_SPEED*dt
+  const targetX=
+    (right.x*wish.x+forward.x*wish.z)*speed;
+  const targetZ=
+    (right.z*wish.x+forward.z*wish.z)*speed;
+
+  horizontalVelocity.x+=THREE.MathUtils.clamp(
+    targetX-horizontalVelocity.x,
+    -acceleration*dt,
+    acceleration*dt
+  );
+  horizontalVelocity.z+=THREE.MathUtils.clamp(
+    targetZ-horizontalVelocity.z,
+    -acceleration*dt,
+    acceleration*dt
   );
 
+  if(wish.lengthSq()===0){
+    const friction=grounded?GROUND_FRICTION:AIR_FRICTION;
+    const factor=Math.max(0,1-friction*dt);
+    horizontalVelocity.x*=factor;
+    horizontalVelocity.z*=factor;
+  }
+
+  tryMoveAxis(horizontalVelocity.x*dt,"x");
+  tryMoveAxis(horizontalVelocity.z*dt,"z");
+
   const spaceDown=keys.has("Space");
-  if(spaceDown&&!spaceWasDown&&grounded){
+  if(spaceDown&&!wasSpaceDown&&grounded){
     velocityY=JUMP_SPEED;
     grounded=false;
   }
-  spaceWasDown=spaceDown;
+  wasSpaceDown=spaceDown;
 
   velocityY-=GRAVITY*dt;
-  const hitFloor=moveVertical(velocityY*dt);
-  if(!hitFloor)grounded=false;
+  if(!moveVertical(velocityY*dt)){
+    grounded=false;
+  }
 
+  world.updateAround(camera.position.x,camera.position.z);
   sky.position.copy(camera.position);
   updateTarget();
 }
@@ -468,33 +540,25 @@ function updateHunger(){
     let image="food_empty.png";
 
     if(value>=2){
-      image=hungerEffect?"food_full_hunger.png":"food_full.png";
+      image=hungerEffect?
+        "food_full_hunger.png":"food_full.png";
     }else if(value===1){
-      image=hungerEffect?"food_half_hunger.png":"food_half.png";
+      image=hungerEffect?
+        "food_half_hunger.png":"food_half.png";
     }
 
-    icon.style.backgroundImage=`url("${new URL(
-      "gui/"+image,textureRoot
-    ).href}")`;
+    icon.style.backgroundImage=
+      `url("${new URL("gui/"+image,textureRoot).href}")`;
   });
 }
 
-function buildMenuOverlay(){
-  const overlay=document.querySelector("#menu-overlay");
-  overlay.style.backgroundImage=`url("${new URL(
-    "gui/title/background/lakeside_sunset_panorama_overlay.png",
-    textureRoot
-  ).href}")`;
-}
-
 function animateMenu(){
-  const now=performance.now();
-  panoramaCube.rotation.y=now*.000025;
-  panoramaCube.rotation.x=THREE.MathUtils.degToRad(
-    2+Math.sin(now*.00012)*1.25
-  );
-  menuCamera.aspect=innerWidth/innerHeight;
-  menuCamera.updateProjectionMatrix();
+  const seconds=performance.now()/1000;
+  const angle=THREE.MathUtils.degToRad(seconds*2.4);
+
+  menuCamera.rotation.x=-THREE.MathUtils.degToRad(8);
+  menuCamera.rotation.y=Math.PI+angle;
+  menuCamera.rotation.z=0;
 }
 
 addEventListener("resize",()=>{
@@ -506,15 +570,11 @@ addEventListener("resize",()=>{
 });
 
 addEventListener("keydown",event=>{
-  if(event.code==="Space"){
-    event.preventDefault();
-  }
+  if(event.code==="Space")event.preventDefault();
 
   if(event.code==="KeyE"){
     event.preventDefault();
-    if(!menuOpen){
-      setInventory(!inventoryOpen);
-    }
+    if(!menuOpen)setInventory(!inventoryOpen);
     return;
   }
 
@@ -548,10 +608,12 @@ canvas.addEventListener("wheel",event=>{
 
 controls.addEventListener("lock",()=>{
   if(!menuOpen&&!inventoryOpen)help.classList.add("hidden");
+  keys.clear();
 });
 
 controls.addEventListener("unlock",()=>{
   if(!menuOpen&&!inventoryOpen)help.classList.remove("hidden");
+  keys.clear();
 });
 
 playButton.addEventListener("click",()=>setMenu(false));
@@ -560,13 +622,12 @@ buildInventorySlots();
 renderInventory();
 updateHunger();
 updateTargetText();
-buildMenuOverlay();
 setMenu(true);
 
-function loop(){
-  requestAnimationFrame(loop);
-  const dt=Math.min(clock.getDelta(),.05);
+function renderLoop(){
+  requestAnimationFrame(renderLoop);
 
+  const dt=Math.min(clock.getDelta(),.05);
   updateAttack();
 
   if(menuOpen){
@@ -575,9 +636,12 @@ function loop(){
     return;
   }
 
-  if(controls.isLocked&&!inventoryOpen)update(dt);
+  if(controls.isLocked&&!inventoryOpen){
+    updatePlayer(dt);
+  }
+
   sky.position.copy(camera.position);
   renderer.render(scene,camera);
 }
 
-loop();
+renderLoop();
