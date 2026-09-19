@@ -13,7 +13,6 @@ export const BLOCKS={
     overlay:"block/grass_block_side_overlay.png",
     bottom:"block/dirt.png",
     snow:"block/grass_block_snow.png",
-    tint:"grass",
     breakable:true
   },
   cobblestone:{texture:"block/cobblestone.png",breakable:true},
@@ -28,12 +27,9 @@ export const BLOCKS={
   }
 };
 
-export const BLOCK_ORDER=[
-  "grass","dirt","stone","cobblestone","coarse_dirt","rooted_dirt","dirt_path"
-];
-
 function loadTexture(loader,cache,path){
   if(cache.has(path))return cache.get(path);
+
   const texture=loader.load(asset(path));
   texture.colorSpace=THREE.SRGBColorSpace;
   texture.magFilter=THREE.NearestFilter;
@@ -45,31 +41,33 @@ function loadTexture(loader,cache,path){
   return texture;
 }
 
-function tintedMaterial(map,grassMap,overlay=false){
+function createTintedMaterial(map,grassMap,transparent=false){
   const material=new THREE.MeshLambertMaterial({
     map,
-    transparent:overlay,
-    depthWrite:!overlay
+    transparent,
+    depthWrite:!transparent
   });
 
   material.onBeforeCompile=shader=>{
     shader.uniforms.uGrassMap={value:grassMap};
+
     shader.vertexShader=
       "attribute vec2 aBiome; varying vec2 vBiome;\n"+
       shader.vertexShader.replace(
         "#include <begin_vertex>",
         "#include <begin_vertex>\n vBiome=aBiome;"
       );
+
     shader.fragmentShader=
       "uniform sampler2D uGrassMap; varying vec2 vBiome;\n"+
       shader.fragmentShader.replace(
         "#include <map_fragment>",
         `#include <map_fragment>
-        vec3 biomeTint=texture2D(uGrassMap,vBiome).rgb;
-        float mask=dot(diffuseColor.rgb,vec3(0.299,0.587,0.114));
-        diffuseColor.rgb=mask*biomeTint;`
+        vec3 biomeColor=texture2D(uGrassMap,vBiome).rgb;
+        diffuseColor.rgb*=biomeColor;`
       );
   };
+
   return material;
 }
 
@@ -79,16 +77,21 @@ export function createMaterials(){
   const grassMap=loadTexture(loader,cache,"colormap/grass.png");
 
   const materials={};
-  const grassSide=loadTexture(loader,cache,"block/dirt.png");
-  const grassTop=loadTexture(loader,cache,"block/grass_block_top.png");
-  const grassOverlay=loadTexture(loader,cache,"block/grass_block_side_overlay.png");
-  const dirt=loadTexture(loader,cache,"block/dirt.png");
 
   for(const [name,block] of Object.entries(BLOCKS)){
     if(name==="grass"){
-      const side=new THREE.MeshLambertMaterial({map:grassSide});
-      const top=tintedMaterial(grassTop,grassMap,false);
-      materials[name]=[side,side,top,dirt,side,side];
+      const side=loadTexture(loader,cache,block.side);
+      const top=loadTexture(loader,cache,block.top);
+      const bottom=loadTexture(loader,cache,block.bottom);
+
+      materials.grass=[
+        new THREE.MeshLambertMaterial({map:side}),
+        new THREE.MeshLambertMaterial({map:side}),
+        createTintedMaterial(top,grassMap),
+        new THREE.MeshLambertMaterial({map:bottom}),
+        new THREE.MeshLambertMaterial({map:side}),
+        new THREE.MeshLambertMaterial({map:side})
+      ];
       continue;
     }
 
@@ -96,6 +99,7 @@ export function createMaterials(){
       const top=loadTexture(loader,cache,block.top);
       const side=loadTexture(loader,cache,block.side);
       const bottom=loadTexture(loader,cache,block.bottom);
+
       materials[name]=[
         new THREE.MeshLambertMaterial({map:side}),
         new THREE.MeshLambertMaterial({map:side}),
@@ -112,10 +116,17 @@ export function createMaterials(){
   }
 
   const transparent=new THREE.MeshBasicMaterial({
-    transparent:true,opacity:0,depthWrite:false
+    transparent:true,
+    opacity:0,
+    depthWrite:false
   });
-  const overlay=tintedMaterial(grassOverlay,grassMap,true);
-  materials.grassOverlay=[overlay,overlay,transparent,transparent,overlay,overlay];
+
+  const overlayTexture=loadTexture(loader,cache,"block/grass_block_side_overlay.png");
+  const overlayTint=createTintedMaterial(overlayTexture,grassMap,true);
+
+  materials.grassOverlay=[
+    overlayTint,overlayTint,transparent,transparent,overlayTint,overlayTint
+  ];
 
   return materials;
 }
@@ -123,7 +134,6 @@ export function createMaterials(){
 export function textureUrl(name){
   const block=BLOCKS[name];
   if(!block)return "";
-  if(name==="grass")return asset("block/grass_block_top.png");
   return asset(block.texture??block.top??block.side);
 }
 
