@@ -52,7 +52,7 @@ const GROUND_ACCELERATION=50;
 const AIR_ACCELERATION=12;
 const GROUND_FRICTION=12;
 const AIR_FRICTION=1.5;
-const WORLD_LIMIT=1024;
+const WORLD_LIMIT=8192;
 
 camera.position.set(.5,world.surfaceAt(.5,.5)+EYE_HEIGHT+.01,.5);
 let velocityY=0;
@@ -78,25 +78,45 @@ const loadUITexture=path=>{
   return t;
 };
 
-// BoxGeometry material order:
-// +X, -X, +Y, -Y, +Z, -Z.
-// With South = +Z the requested mapping is:
-// 0=South(+Z), 1=West(-X), 2=North(-Z),
-// 3=East(+X), 4=Up(+Y), 5=Down(-Y).
+const loadPanoramaTexture=(path,flipHorizontal)=>{
+  const t=loadUITexture(path);
+  if(flipHorizontal){
+    t.wrapS=THREE.RepeatWrapping;
+    t.repeat.x=-1;
+    t.offset.x=1;
+    t.needsUpdate=true;
+  }
+  return t;
+};
+
+// THREE.BoxGeometry material order is:
+// [ +X, -X, +Y, -Y, +Z, -Z ].
+//
+// Imux panorama files are fixed to:
+// _0 = South, _1 = West, _2 = North,
+// _3 = East,  _4 = Up,   _5 = Down.
+//
+// Therefore the material array MUST be:
+// +X = West(_1), -X = East(_3),
+// +Y = Up(_4),   -Y = Down(_5),
+// +Z = South(_0),-Z = North(_2).
 const panoramaFiles=[
-  "gui/title/background/lakeside_sunset_panorama_3.png", // +X = East / Left
-  "gui/title/background/lakeside_sunset_panorama_1.png", // -X = West / Right
+  "gui/title/background/lakeside_sunset_panorama_1.png", // +X = West / Right
+  "gui/title/background/lakeside_sunset_panorama_3.png", // -X = East / Left
   "gui/title/background/lakeside_sunset_panorama_4.png", // +Y = Up
   "gui/title/background/lakeside_sunset_panorama_5.png", // -Y = Down
   "gui/title/background/lakeside_sunset_panorama_0.png", // +Z = South / Front
   "gui/title/background/lakeside_sunset_panorama_2.png"  // -Z = North / Back
 ];
 
-const panoramaMaterials=panoramaFiles.map(path=>new THREE.MeshBasicMaterial({
-  map:loadUITexture(path),
-  side:THREE.BackSide,
-  depthWrite:false
-}));
+const panoramaMaterials=panoramaFiles.map((path,index)=>{
+  const horizontalFace=index===0||index===1||index===4||index===5;
+  return new THREE.MeshBasicMaterial({
+    map:loadPanoramaTexture(path,horizontalFace),
+    side:THREE.BackSide,
+    depthWrite:false
+  });
+});
 
 const panoramaCube=new THREE.Mesh(
   new THREE.BoxGeometry(2,2,2),
@@ -113,6 +133,19 @@ menuOverlay.style.backgroundImage=
 
 const sky=makeSky();
 scene.add(sky);
+
+let guiScale=1;
+
+function updateGuiScale(){
+  const widthScale=Math.floor(innerWidth/320);
+  const heightScale=Math.floor(innerHeight/240);
+  guiScale=THREE.MathUtils.clamp(
+    Math.min(widthScale,heightScale),
+    1,
+    4
+  );
+  document.documentElement.style.setProperty("--gui-scale",String(guiScale));
+}
 
 const keys=new Set();
 const raycaster=new THREE.Raycaster();
@@ -596,6 +629,7 @@ addEventListener("resize",()=>{
   menuCamera.aspect=innerWidth/innerHeight;
   menuCamera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight,false);
+  updateGuiScale();
 });
 
 addEventListener("keydown",event=>{
@@ -651,6 +685,7 @@ buildInventorySlots();
 renderInventory();
 updateHunger();
 updateTargetText();
+updateGuiScale();
 setMenu(true);
 
 function renderLoop(){
