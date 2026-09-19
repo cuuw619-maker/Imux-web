@@ -63,6 +63,36 @@
     <button class="slot" type="button"></button>
   </div>
 
+  <div id="tuning" class="hidden" aria-label="Imux render and hitbox tuning">
+    <div id="tuning-window">
+      <div class="tuning-title">IMUX RENDER / HITBOX TUNER</div>
+      <div class="tuning-hint">R close • K copy JSON • changes are saved locally</div>
+
+      <div class="tuning-grid">
+        <label data-tune-row="renderScale">Render scale <output></output><input data-tune="renderScale" type="range" min="0.5" max="2" step="0.05"></label>
+        <label data-tune-row="guiScale">GUI scale <output></output><input data-tune="guiScale" type="range" min="1" max="4" step="1"></label>
+        <label data-tune-row="gameFov">Game FOV <output></output><input data-tune="gameFov" type="range" min="50" max="110" step="1"></label>
+        <label data-tune-row="reach">Block reach <output></output><input data-tune="reach" type="range" min="2" max="12" step="0.1"></label>
+
+        <label data-tune-row="playerRadius">Hitbox radius <output></output><input data-tune="playerRadius" type="range" min="0.10" max="0.50" step="0.01"></label>
+        <label data-tune-row="playerHeight">Hitbox height <output></output><input data-tune="playerHeight" type="range" min="1" max="2.5" step="0.01"></label>
+        <label data-tune-row="eyeHeight">Eye height <output></output><input data-tune="eyeHeight" type="range" min="0.6" max="2.2" step="0.01"></label>
+        <label data-tune-row="stepHeight">Step height <output></output><input data-tune="stepHeight" type="range" min="0" max="1" step="0.01"></label>
+
+        <label data-tune-row="sneakHeight">Sneak height <output></output><input data-tune="sneakHeight" type="range" min="0.8" max="2" step="0.01"></label>
+        <label data-tune-row="sneakEyeHeight">Sneak eye <output></output><input data-tune="sneakEyeHeight" type="range" min="0.6" max="1.7" step="0.01"></label>
+        <label data-tune-row="menuFov">Panorama FOV <output></output><input data-tune="menuFov" type="range" min="75" max="120" step="1"></label>
+        <label data-tune-row="menuPitch">Panorama pitch <output></output><input data-tune="menuPitch" type="range" min="-45" max="-5" step="0.5"></label>
+        <label data-tune-row="menuSpeed">Panorama speed <output></output><input data-tune="menuSpeed" type="range" min="0" max="5" step="0.05"></label>
+      </div>
+
+      <div class="tuning-footer">
+        <button id="tuning-reset" type="button">RESET</button>
+        <span id="tuning-status">R close • K copy JSON</span>
+      </div>
+    </div>
+  </div>
+
   <div id="inventory" class="hidden">
     <div id="inventory-window">
       <div id="inventory-slots"></div>
@@ -79,6 +109,8 @@
     <span>RMB place</span>
     <span>Wheel select</span>
     <span>E inventory</span>
+    <span>R tune</span>
+    <span>K JSON</span>
     <span>Esc release</span>
   </div>
 
