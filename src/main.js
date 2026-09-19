@@ -1,11 +1,13 @@
 import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js";
 import {PointerLockControls} from "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/controls/PointerLockControls.js";
-import {World} from "./world.js";
 import {HOTBAR,textureUrl} from "./blocks.js";
+import {World} from "./world.js";
 
 const canvas=document.querySelector("#game");
 const help=document.querySelector("#help");
 const targetLabel=document.querySelector("#target");
+const menu=document.querySelector("#menu");
+const playButton=document.querySelector("#play");
 const slots=[...document.querySelectorAll(".slot")];
 
 const renderer=new THREE.WebGLRenderer({canvas,antialias:false,powerPreference:"high-performance"});
@@ -15,6 +17,77 @@ renderer.outputColorSpace=THREE.SRGBColorSpace;
 
 const scene=new THREE.Scene();
 scene.background=new THREE.Color(0x87ceeb);
+
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,180);
+const controls=new PointerLockControls(camera,canvas);
+const world=new World(scene);
+
+const PLAYER_RADIUS=.30;
+const PLAYER_HEIGHT=1.80;
+const EYE_HEIGHT=1.62;
+const MOVE_SPEED=5.2;
+const GRAVITY=18;
+const JUMP_SPEED=7;
+const WORLD_LIMIT=31.5;
+
+camera.position.set(.5,world.heightAt(.5,.5)+1+EYE_HEIGHT+.05,.5);
+
+const keys=new Set();
+const raycaster=new THREE.Raycaster();
+raycaster.far=8;
+const inventory=Array(9).fill(null);
+let selected=0;
+let velocityY=0;
+let grounded=false;
+let spaceWasDown=false;
+let lastLooking="";
+let menuOpen=true;
+let panoramaTexture=null;
+
+const clock=new THREE.Clock();
+
+function makeSky(){
+  const geometry=new THREE.SphereGeometry(100,32,16);
+  const material=new THREE.ShaderMaterial({
+    side:THREE.BackSide,
+    depthWrite:false,
+    uniforms:{
+      top:{value:new THREE.Color(0x4b93d1)},
+      horizon:{value:new THREE.Color(0xd9f2ff)},
+      sunColor:{value:new THREE.Color(0xfff1c2)},
+      sunDir:{value:new THREE.Vector3(-.35,.72,-.45).normalize()}
+    },
+    vertexShader:`
+      varying vec3 vDirection;
+      void main(){
+        vec4 worldPosition=modelMatrix*vec4(position,1.0);
+        vDirection=normalize(worldPosition.xyz-cameraPosition);
+        gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);
+      }
+    `,
+    fragmentShader:`
+      varying vec3 vDirection;
+      uniform vec3 top;
+      uniform vec3 horizon;
+      uniform vec3 sunColor;
+      uniform vec3 sunDir;
+      void main(){
+        float h=clamp(vDirection.y*.5+.5,0.0,1.0);
+        vec3 color=mix(horizon,top,pow(h,0.72));
+        float sun=max(dot(vDirection,sunDir),0.0);
+        color+=sunColor*pow(sun,180.0)*1.6;
+        color+=sunColor*pow(sun,24.0)*.16;
+        gl_FragColor=vec4(color,1.0);
+      }
+    `
+  });
+  const sky=new THREE.Mesh(geometry,material);
+  sky.frustumCulled=false;
+  return sky;
+}
+
+const sky=makeSky();
+scene.add(sky);
 
 const panoramaUrls=[
   "lakeside_sunset_panorama_0.png",
@@ -27,77 +100,67 @@ const panoramaUrls=[
 
 new THREE.CubeTextureLoader().load(panoramaUrls,texture=>{
   texture.colorSpace=THREE.SRGBColorSpace;
-  scene.background=texture;
+  panoramaTexture=texture;
+  if(menuOpen)scene.background=panoramaTexture;
 });
 
-const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,150);
-const controls=new PointerLockControls(camera,canvas);
-const world=new World(scene);
+function setMenu(open){
+  menuOpen=open;
+  menu.classList.toggle("hidden",!open);
+  if(open){
+    scene.background=panoramaTexture??new THREE.Color(0x111111);
+    controls.unlock();
+  }else{
+    scene.background=null;
+    controls.lock();
+  }
+}
 
-camera.position.set(.5,world.heightAt(.5,.5)+1.67,.5);
-
-const keys=new Set();
-const raycaster=new THREE.Raycaster();
-raycaster.far=8;
-let velocityY=0;
-let grounded=false;
-let selected=0;
-let lastLooking="";
-const clock=new THREE.Clock();
+function renderHotbar(){
+  inventory.forEach((item,i)=>{
+    const slot=slots[i];
+    slot.style.backgroundImage=item?`url("${textureUrl(item.type)}")`:"none";
+    slot.classList.toggle("filled",!!item);
+    slot.classList.toggle("selected",i===selected);
+  });
+}
 
 function selectSlot(index){
-  selected=(index+HOTBAR.length)%HOTBAR.length;
-  slots.forEach((slot,i)=>slot.classList.toggle("selected",i===selected));
+  selected=(index+inventory.length)%inventory.length;
+  renderHotbar();
   updateTargetText();
 }
 
-slots.forEach((slot,i)=>{
-  slot.style.backgroundImage=`url("${textureUrl(HOTBAR[i])}")`;
-});
-
-function updateTargetText(looking=lastLooking){
-  targetLabel.textContent=`selected: ${HOTBAR[selected]} | looking: ${looking||"air"}`;
+function nextFilled(direction){
+  if(!inventory.some(Boolean))return;
+  for(let step=1;step<=inventory.length;step++){
+    const index=(selected+direction*step+inventory.length*10)%inventory.length;
+    if(inventory[index]){selected=index;renderHotbar();updateTargetText();return;}
+  }
 }
 
-selectSlot(0);
+function addItem(type){
+  const existing=inventory.find(item=>item?.type===type);
+  if(existing){existing.count++;renderHotbar();return true;}
+  const empty=inventory.findIndex(item=>!item);
+  if(empty<0)return false;
+  inventory[empty]={type,count:1};
+  selected=empty;
+  renderHotbar();
+  return true;
+}
 
-addEventListener("resize",()=>{
-  camera.aspect=innerWidth/innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth,innerHeight,false);
-});
+function removeSelected(){
+  const item=inventory[selected];
+  if(!item)return false;
+  item.count--;
+  if(item.count<=0)inventory[selected]=null;
+  renderHotbar();
+  return true;
+}
 
-addEventListener("keydown",event=>{
-  if(event.code==="Space")event.preventDefault();
-  keys.add(event.code);
-
-  if(event.code.startsWith("Digit")){
-    const n=Number(event.code.slice(5));
-    if(n>=1&&n<=9)selectSlot(n-1);
-  }
-  if(event.code==="KeyQ")selectSlot(selected-1);
-  if(event.code==="KeyE")selectSlot(selected+1);
-});
-
-addEventListener("keyup",event=>keys.delete(event.code));
-
-canvas.addEventListener("click",()=>controls.lock());
-canvas.addEventListener("contextmenu",event=>event.preventDefault());
-
-canvas.addEventListener("mousedown",event=>{
-  if(!controls.isLocked)return;
-  if(event.button===0)breakBlock();
-  if(event.button===2)placeBlock();
-});
-
-controls.addEventListener("lock",()=>help.classList.add("hidden"));
-controls.addEventListener("unlock",()=>help.classList.remove("hidden"));
-
-function isInsidePlayer(x,y,z){
-  const minX=camera.position.x-.3,maxX=camera.position.x+.3;
-  const minY=camera.position.y-1.62,maxY=camera.position.y+.18;
-  const minZ=camera.position.z-.3,maxZ=camera.position.z+.3;
-  return x<maxX&&x+1>minX&&y<maxY&&y+1>minY&&z<maxZ&&z+1>minZ;
+function updateTargetText(looking=lastLooking){
+  targetLabel.textContent=`selected: ${inventory[selected]?.type??"empty"} | looking: ${looking||"air"}`;
 }
 
 function centerHit(){
@@ -108,13 +171,30 @@ function centerHit(){
 function breakBlock(){
   const hit=centerHit();
   const block=hit&&world.blockFromHit(hit);
-  if(block)world.removeBlock(block.x,block.y,block.z);
+  if(!block)return;
+  const type=world.get(block.x,block.y,block.z);
+  if(!type)return;
+  if(!addItem(type))return;
+  if(!world.removeBlock(block.x,block.y,block.z)){
+    inventory[selected]=null;
+    renderHotbar();
+  }
+}
+
+function overlapsPlayer(x,y,z){
+  const minX=camera.position.x-PLAYER_RADIUS;
+  const maxX=camera.position.x+PLAYER_RADIUS;
+  const minY=camera.position.y-EYE_HEIGHT;
+  const maxY=minY+PLAYER_HEIGHT;
+  const minZ=camera.position.z-PLAYER_RADIUS;
+  const maxZ=camera.position.z+PLAYER_RADIUS;
+  return x<maxX&&x+1>minX&&y<maxY&&y+1>minY&&z<maxZ&&z+1>minZ;
 }
 
 function placeBlock(){
+  const item=inventory[selected];
   const hit=centerHit();
-  if(!hit?.face)return;
-
+  if(!item||!hit?.face)return;
   const block=world.blockFromHit(hit);
   if(!block)return;
 
@@ -123,8 +203,8 @@ function placeBlock(){
   const y=block.y+Math.round(normal.y);
   const z=block.z+Math.round(normal.z);
 
-  if(isInsidePlayer(x,y,z))return;
-  world.placeBlock(x,y,z,HOTBAR[selected]);
+  if(overlapsPlayer(x,y,z))return;
+  if(world.placeBlock(x,y,z,item.type))removeSelected();
 }
 
 function updateTarget(){
@@ -134,15 +214,62 @@ function updateTarget(){
   updateTargetText();
 }
 
-function update(dt){
-  const speed=5.2;
-  const dir=new THREE.Vector3(
-    (keys.has("KeyD")?1:0)-(keys.has("KeyA")?1:0),
-    0,
-    (keys.has("KeyS")?1:0)-(keys.has("KeyW")?1:0)
+function collide(){
+  return world.collidesPlayer(
+    camera.position.x,
+    camera.position.y,
+    camera.position.z,
+    PLAYER_RADIUS,
+    EYE_HEIGHT,
+    PLAYER_HEIGHT
   );
+}
 
-  if(dir.lengthSq())dir.normalize();
+function moveHorizontal(dx,dz){
+  const oldX=camera.position.x;
+  camera.position.x=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,camera.position.x+dx));
+  if(collide())camera.position.x=oldX;
+
+  const oldZ=camera.position.z;
+  camera.position.z=Math.max(-WORLD_LIMIT,Math.min(WORLD_LIMIT,camera.position.z+dz));
+  if(collide())camera.position.z=oldZ;
+}
+
+function moveVertical(dy){
+  const oldY=camera.position.y;
+  const nextY=oldY+dy;
+  camera.position.y=nextY;
+  if(!collide())return {hit:false};
+
+  let lo,hi;
+  if(dy<0){
+    lo=nextY;
+    hi=oldY;
+    for(let i=0;i<12;i++){
+      const mid=(lo+hi)*.5;
+      camera.position.y=mid;
+      if(collide())lo=mid;else hi=mid;
+    }
+    camera.position.y=hi;
+    return {hit:true,down:true};
+  }
+
+  lo=oldY;
+  hi=nextY;
+  for(let i=0;i<12;i++){
+    const mid=(lo+hi)*.5;
+    camera.position.y=mid;
+    if(collide())hi=mid;else lo=mid;
+  }
+  camera.position.y=lo;
+  return {hit:true,down:false};
+}
+
+function update(dt){
+  const forwardInput=(keys.has("KeyW")?1:0)-(keys.has("KeyS")?1:0);
+  const strafeInput=(keys.has("KeyD")?1:0)-(keys.has("KeyA")?1:0);
+  const input=new THREE.Vector3(strafeInput,0,forwardInput);
+  if(input.lengthSq()>1)input.normalize();
 
   const forward=new THREE.Vector3();
   camera.getWorldDirection(forward);
@@ -153,38 +280,84 @@ function update(dt){
     forward,new THREE.Vector3(0,1,0)
   ).normalize();
 
-  camera.position.addScaledVector(forward,dir.z*speed*dt);
-  camera.position.addScaledVector(right,dir.x*speed*dt);
+  moveHorizontal(
+    (right.x*input.x+forward.x*input.z)*MOVE_SPEED*dt,
+    (right.z*input.x+forward.z*input.z)*MOVE_SPEED*dt
+  );
 
-  velocityY-=18*dt;
-  camera.position.y+=velocityY*dt;
+  const spaceDown=keys.has("Space");
+  if(spaceDown&&!spaceWasDown&&grounded){
+    velocityY=JUMP_SPEED;
+    grounded=false;
+  }
+  spaceWasDown=spaceDown;
 
-  const floor=world.heightAt(camera.position.x,camera.position.z)+1.67;
-  if(camera.position.y<=floor){
-    camera.position.y=floor;
+  velocityY-=GRAVITY*dt;
+  const vertical=moveVertical(velocityY*dt);
+  if(vertical.hit){
+    if(vertical.down)grounded=true;
     velocityY=0;
-    grounded=true;
   }else{
     grounded=false;
   }
 
-  if(keys.has("Space")&&grounded){
-    velocityY=7;
-    grounded=false;
-  }
-
-  const limit=31.5;
-  camera.position.x=Math.max(-limit,Math.min(limit,camera.position.x));
-  camera.position.z=Math.max(-limit,Math.min(limit,camera.position.z));
-
+  sky.position.copy(camera.position);
   updateTarget();
 }
 
 function loop(){
   requestAnimationFrame(loop);
   const dt=Math.min(clock.getDelta(),.05);
-  if(controls.isLocked)update(dt);
+  if(controls.isLocked&&!menuOpen)update(dt);
+  sky.position.copy(camera.position);
   renderer.render(scene,camera);
 }
 
+addEventListener("resize",()=>{
+  camera.aspect=innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth,innerHeight,false);
+});
+
+addEventListener("keydown",event=>{
+  if(event.code==="Space")event.preventDefault();
+  keys.add(event.code);
+  if(event.code==="Digit1")selectSlot(0);
+  if(event.code==="Digit2")selectSlot(1);
+  if(event.code==="Digit3")selectSlot(2);
+  if(event.code==="Digit4")selectSlot(3);
+  if(event.code==="Digit5")selectSlot(4);
+  if(event.code==="Digit6")selectSlot(5);
+  if(event.code==="Digit7")selectSlot(6);
+  if(event.code==="Digit8")selectSlot(7);
+  if(event.code==="Digit9")selectSlot(8);
+});
+
+addEventListener("keyup",event=>keys.delete(event.code));
+
+canvas.addEventListener("click",()=>{if(!menuOpen)controls.lock()});
+canvas.addEventListener("contextmenu",event=>event.preventDefault());
+canvas.addEventListener("mousedown",event=>{
+  if(!controls.isLocked||menuOpen)return;
+  if(event.button===0)breakBlock();
+  if(event.button===2)placeBlock();
+});
+canvas.addEventListener("wheel",event=>{
+  if(!controls.isLocked||menuOpen)return;
+  event.preventDefault();
+  nextFilled(event.deltaY>0?1:-1);
+},{passive:false});
+
+controls.addEventListener("lock",()=>{
+  if(!menuOpen)help.classList.add("hidden");
+});
+controls.addEventListener("unlock",()=>{
+  if(!menuOpen)help.classList.remove("hidden");
+});
+
+playButton.addEventListener("click",()=>setMenu(false));
+
+renderHotbar();
+updateTargetText();
+setMenu(true);
 loop();
