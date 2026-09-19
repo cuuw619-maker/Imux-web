@@ -1,16 +1,40 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111">
+  <meta name="description" content="Imux Web - browser voxel game prototype">
   <title>Imux Web</title>
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
   <canvas id="game" tabindex="0"></canvas>
-  <div id="crosshair">+</div>
-  <div id="hotbar"><div class="slot selected">1</div><div class="slot">2</div><div class="slot">3</div><div class="slot">4</div><div class="slot">5</div><div class="slot">6</div><div class="slot">7</div><div class="slot">8</div><div class="slot">9</div></div>
-  <div id="help">Click to play · WASD move · Space jump · Esc release mouse</div>
+  <div id="crosshair" aria-hidden="true"></div>
+  <div id="hud">
+    <div id="status">IMUX • DEV BUILD</div>
+    <div id="target"></div>
+  </div>
+  <div id="hotbar" aria-label="Hotbar">
+    <button class="slot selected" data-index="0" aria-label="Slot 1">1</button>
+    <button class="slot" data-index="1" aria-label="Slot 2">2</button>
+    <button class="slot" data-index="2" aria-label="Slot 3">3</button>
+    <button class="slot" data-index="3" aria-label="Slot 4">4</button>
+    <button class="slot" data-index="4" aria-label="Slot 5">5</button>
+    <button class="slot" data-index="5" aria-label="Slot 6">6</button>
+    <button class="slot" data-index="6" aria-label="Slot 7">7</button>
+    <button class="slot" data-index="7" aria-label="Slot 8">8</button>
+    <button class="slot" data-index="8" aria-label="Slot 9">9</button>
+  </div>
+  <div id="help">
+    <strong>Click to play</strong>
+    <span>WASD move</span>
+    <span>Space jump</span>
+    <span>LMB break</span>
+    <span>RMB place</span>
+    <span>1–9 select</span>
+    <span>Esc release mouse</span>
+  </div>
   <script type="module" src="./src/main.js"></script>
 </body>
 </html>
