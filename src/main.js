@@ -16,20 +16,71 @@ const hungerIcons=[...document.querySelectorAll(".hunger-icon")];
 const attackIndicator=document.querySelector("#attack-indicator");
 const attackProgress=document.querySelector("#attack-progress");
 const attackFull=document.querySelector("#attack-full");
+const tuningPanel=document.querySelector("#tuning");
+const tuningStatus=document.querySelector("#tuning-status");
+const tuningInputs=[...document.querySelectorAll("[data-tune]")];
+const tuningReset=document.querySelector("#tuning-reset");
+
+const autoGuiScale=THREE.MathUtils.clamp(
+  Math.min(Math.floor(innerWidth/320),Math.floor(innerHeight/240)),
+  1,
+  4
+);
+
+const T={
+  renderScale:1,
+  guiScale:autoGuiScale,
+  gameFov:75,
+  menuFov:100,
+  menuPitch:-25,
+  menuSpeed:2.4,
+  playerRadius:.30,
+  playerHeight:1.80,
+  eyeHeight:1.62,
+  sneakHeight:1.50,
+  sneakEyeHeight:1.27,
+  stepHeight:.60,
+  reach:7.5
+};
+
+try{
+  Object.assign(T,JSON.parse(localStorage.getItem("imux:tuning")||"{}"));
+}catch{}
+
+const tuneLimits={
+  renderScale:[.5,2],
+  guiScale:[1,4],
+  gameFov:[50,110],
+  menuFov:[75,120],
+  menuPitch:[-45,-5],
+  menuSpeed:[0,5],
+  playerRadius:[.10,.50],
+  playerHeight:[1,2.5],
+  eyeHeight:[.6,2.2],
+  sneakHeight:[.8,2],
+  sneakEyeHeight:[.6,1.7],
+  stepHeight:[0,1],
+  reach:[2,12]
+};
+
+for(const [key,[min,max]] of Object.entries(tuneLimits)){
+  const value=Number(T[key]);
+  T[key]=THREE.MathUtils.clamp(Number.isFinite(value)?value:min,min,max);
+}
 
 const renderer=new THREE.WebGLRenderer({
   canvas,
   antialias:false,
   powerPreference:"high-performance"
 });
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setPixelRatio(Math.min(devicePixelRatio*T.renderScale,3));
 renderer.setSize(innerWidth,innerHeight,false);
 renderer.outputColorSpace=THREE.SRGBColorSpace;
 
 const scene=new THREE.Scene();
 scene.background=null;
 
-const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,180);
+const camera=new THREE.PerspectiveCamera(T.gameFov,innerWidth/innerHeight,.05,180);
 const controls=new PointerLockControls(camera,canvas);
 controls.minPolarAngle=.01;
 controls.maxPolarAngle=Math.PI-.01;
@@ -37,24 +88,18 @@ controls.maxPolarAngle=Math.PI-.01;
 const world=new World(scene);
 world.updateAround(0,0);
 
-const PLAYER_RADIUS=.30;
-const PLAYER_HEIGHT=1.80;
-const EYE_HEIGHT=1.62;
-const SNEAK_HEIGHT=1.50;
-const SNEAK_EYE_HEIGHT=1.27;
 const WALK_SPEED=4.317;
 const SPRINT_SPEED=5.612;
 const SNEAK_SPEED=1.295;
 const JUMP_SPEED=8.0;
 const GRAVITY=32.0;
-const STEP_HEIGHT=.6;
 const GROUND_ACCELERATION=50;
 const AIR_ACCELERATION=12;
 const GROUND_FRICTION=12;
 const AIR_FRICTION=1.5;
 const WORLD_LIMIT=8192;
 
-camera.position.set(.5,world.surfaceAt(.5,.5)+EYE_HEIGHT+.01,.5);
+camera.position.set(.5,world.surfaceAt(.5,.5)+T.eyeHeight+.01,.5);
 let velocityY=0;
 let horizontalVelocity=new THREE.Vector3();
 let grounded=true;
@@ -63,7 +108,7 @@ let sprinting=false;
 let wasSpaceDown=false;
 
 const menuScene=new THREE.Scene();
-const menuCamera=new THREE.PerspectiveCamera(100,innerWidth/innerHeight,.1,100);
+const menuCamera=new THREE.PerspectiveCamera(T.menuFov,innerWidth/innerHeight,.1,200);
 menuCamera.position.set(0,0,0);
 menuCamera.rotation.order="YXZ";
 
@@ -78,51 +123,44 @@ const loadUITexture=path=>{
   return t;
 };
 
-const loadPanoramaTexture=(path,flipHorizontal)=>{
-  const t=loadUITexture(path);
-  if(flipHorizontal){
-    t.wrapS=THREE.RepeatWrapping;
-    t.repeat.x=-1;
-    t.offset.x=1;
-    t.needsUpdate=true;
-  }
-  return t;
-};
-
-// THREE.BoxGeometry material order is:
+// THREE.BoxGeometry material order:
 // [ +X, -X, +Y, -Y, +Z, -Z ].
 //
-// Imux panorama files are fixed to:
-// _0 = South, _1 = West, _2 = North,
-// _3 = East,  _4 = Up,   _5 = Down.
+// Imux 1.20+/1.21+ panorama files:
+// _0 South, _1 West, _2 North, _3 East, _4 Up, _5 Down.
 //
-// Therefore the material array MUST be:
-// +X = West(_1), -X = East(_3),
-// +Y = Up(_4),   -Y = Down(_5),
-// +Z = South(_0),-Z = North(_2).
+// Exact cubemap binding:
+// +X <- West(_1)
+// -X <- East(_3)
+// +Y <- Up(_4)
+// -Y <- Down(_5)
+// +Z <- South(_0)
+// -Z <- North(_2)
+//
+// The camera is inside the cube. Do not mirror the source images.
+// Mirroring here was the previous source of the scrambled orientation.
 const panoramaFiles=[
-  "gui/title/background/lakeside_sunset_panorama_1.png", // +X = West / Right
-  "gui/title/background/lakeside_sunset_panorama_3.png", // -X = East / Left
-  "gui/title/background/lakeside_sunset_panorama_4.png", // +Y = Up
-  "gui/title/background/lakeside_sunset_panorama_5.png", // -Y = Down
-  "gui/title/background/lakeside_sunset_panorama_0.png", // +Z = South / Front
-  "gui/title/background/lakeside_sunset_panorama_2.png"  // -Z = North / Back
+  "gui/title/background/lakeside_sunset_panorama_1.png",
+  "gui/title/background/lakeside_sunset_panorama_3.png",
+  "gui/title/background/lakeside_sunset_panorama_4.png",
+  "gui/title/background/lakeside_sunset_panorama_5.png",
+  "gui/title/background/lakeside_sunset_panorama_0.png",
+  "gui/title/background/lakeside_sunset_panorama_2.png"
 ];
 
-const panoramaMaterials=panoramaFiles.map((path,index)=>{
-  const horizontalFace=index===0||index===1||index===4||index===5;
-  return new THREE.MeshBasicMaterial({
-    map:loadPanoramaTexture(path,horizontalFace),
-    side:THREE.BackSide,
-    depthWrite:false
-  });
-});
+const panoramaMaterials=panoramaFiles.map(path=>new THREE.MeshBasicMaterial({
+  map:loadUITexture(path),
+  side:THREE.BackSide,
+  depthWrite:false,
+  toneMapped:false
+}));
 
 const panoramaCube=new THREE.Mesh(
   new THREE.BoxGeometry(2,2,2),
   panoramaMaterials
 );
-panoramaCube.scale.setScalar(40);
+panoramaCube.scale.setScalar(80);
+panoramaCube.frustumCulled=false;
 menuScene.add(panoramaCube);
 
 menuOverlay.style.backgroundImage=
@@ -134,22 +172,13 @@ menuOverlay.style.backgroundImage=
 const sky=makeSky();
 scene.add(sky);
 
-let guiScale=1;
-
 function updateGuiScale(){
-  const widthScale=Math.floor(innerWidth/320);
-  const heightScale=Math.floor(innerHeight/240);
-  guiScale=THREE.MathUtils.clamp(
-    Math.min(widthScale,heightScale),
-    1,
-    4
-  );
-  document.documentElement.style.setProperty("--gui-scale",String(guiScale));
+  document.documentElement.style.setProperty("--gui-scale",String(T.guiScale));
 }
 
 const keys=new Set();
 const raycaster=new THREE.Raycaster();
-raycaster.far=7.5;
+raycaster.far=T.reach;
 const inventory=new Array(36).fill(null);
 
 let selected=0;
@@ -160,6 +189,8 @@ let hunger=20;
 let hungerEffect=false;
 let attackEnd=0;
 let attackFlashEnd=0;
+let tuningOpen=false;
+let hitboxHelper=null;
 let lastChunkX=Infinity;
 let lastChunkZ=Infinity;
 
@@ -251,11 +282,13 @@ function buildInventorySlots(){
     const slot=document.createElement("div");
     slot.className="inventory-slot";
 
-    const row=i<27?Math.floor(i/9):3;
     const column=i%9;
+    const row=i<27?Math.floor(i/9):0;
+    const left=8+column*18;
+    const top=i<27?84+row*18:142;
 
-    slot.style.left=`${8+column*18}px`;
-    slot.style.top=`${18+row*18}px`;
+    slot.style.left=`${left}px`;
+    slot.style.top=`${top}px`;
 
     const count=document.createElement("span");
     count.className="item-count";
@@ -370,28 +403,196 @@ function breakBlock(){
 }
 
 function playerAABB(x=camera.position.x,y=camera.position.y,z=camera.position.z){
-  const eye=sneaking?SNEAK_EYE_HEIGHT:EYE_HEIGHT;
-  const height=sneaking?SNEAK_HEIGHT:PLAYER_HEIGHT;
+  const eye=sneaking?T.sneakEyeHeight:T.eyeHeight;
+  const height=sneaking?T.sneakHeight:T.playerHeight;
 
   return {
-    minX:x-PLAYER_RADIUS,
-    maxX:x+PLAYER_RADIUS,
+    minX:x-T.playerRadius,
+    maxX:x+T.playerRadius,
     minY:y-eye,
     maxY:y-eye+height,
-    minZ:z-PLAYER_RADIUS,
-    maxZ:z+PLAYER_RADIUS
+    minZ:z-T.playerRadius,
+    maxZ:z+T.playerRadius
   };
 }
 
-function overlapsPlayer(x,y,z,type){
-  const box=playerAABB();
-  const h=world.blockHeight(type);
-  return x<box.maxX&&x+1>box.minX&&
-         y<box.maxY&&y+h>box.minY&&
-         z<box.maxZ&&z+1>box.minZ;
+function removeHitboxHelper(){
+  if(!hitboxHelper)return;
+  scene.remove(hitboxHelper);
+  hitboxHelper.geometry.dispose();
+  hitboxHelper.material.dispose();
+  hitboxHelper=null;
 }
 
-function placeBlock(){
+function updateHitboxHelper(){
+  if(!tuningOpen){
+    removeHitboxHelper();
+    return;
+  }
+
+  const box=playerAABB();
+  const source=new THREE.BoxGeometry(
+    box.maxX-box.minX,
+    box.maxY-box.minY,
+    box.maxZ-box.minZ
+  );
+  const edges=new THREE.EdgesGeometry(source);
+  source.dispose();
+
+  removeHitboxHelper();
+
+  hitboxHelper=new THREE.LineSegments(
+    edges,
+    new THREE.LineBasicMaterial({
+      color:0xffffff,
+      transparent:true,
+      opacity:.8
+    })
+  );
+  hitboxHelper.position.set(
+    (box.minX+box.maxX)*.5,
+    (box.minY+box.maxY)*.5,
+    (box.minZ+box.maxZ)*.5
+  );
+  scene.add(hitboxHelper);
+}
+
+function formatTuneValue(key,value){
+  return key==="guiScale"?String(Math.round(value)):value.toFixed(2);
+}
+
+function refreshTuningUI(){
+  for(const input of tuningInputs){
+    const key=input.dataset.tune;
+    input.value=String(T[key]);
+    const output=input.parentElement.querySelector("output");
+    if(output)output.textContent=formatTuneValue(key,T[key]);
+  }
+}
+
+function saveTuning(){
+  try{
+    localStorage.setItem("imux:tuning",JSON.stringify(T));
+  }catch{}
+}
+
+function applyTuning(){
+  camera.fov=T.gameFov;
+  camera.updateProjectionMatrix();
+
+  menuCamera.fov=T.menuFov;
+  menuCamera.updateProjectionMatrix();
+
+  raycaster.far=T.reach;
+  renderer.setPixelRatio(Math.min(devicePixelRatio*T.renderScale,3));
+  renderer.setSize(innerWidth,innerHeight,false);
+
+  updateGuiScale();
+  updateHitboxHelper();
+}
+
+function tuningJson(){
+  return JSON.stringify({
+    format:"imux-tuning-v1",
+    renderer:{
+      renderScale:T.renderScale,
+      gameFov:T.gameFov,
+      reach:T.reach
+    },
+    gui:{
+      scale:T.guiScale
+    },
+    panorama:{
+      fov:T.menuFov,
+      pitch:T.menuPitch,
+      speed:T.menuSpeed,
+      yawStart:"south",
+      yawDirection:"subtract"
+    },
+    playerHitbox:{
+      radius:T.playerRadius,
+      height:T.playerHeight,
+      eyeHeight:T.eyeHeight,
+      sneakHeight:T.sneakHeight,
+      sneakEyeHeight:T.sneakEyeHeight,
+      stepHeight:T.stepHeight
+    }
+  },null,2);
+}
+
+async function copyTuningJson(){
+  const data=tuningJson();
+  try{
+    await navigator.clipboard.writeText(data);
+    tuningStatus.textContent="JSON copied to clipboard";
+  }catch{
+    const area=document.createElement("textarea");
+    area.value=data;
+    area.style.position="fixed";
+    area.style.left="-9999px";
+    document.body.append(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+    tuningStatus.textContent="JSON copied to clipboard";
+  }
+}
+
+function setTuning(open){
+  tuningOpen=open;
+  tuningPanel.classList.toggle("hidden",!open);
+  help.classList.toggle("hidden",open||menuOpen||inventoryOpen);
+
+  if(open){
+    if(inventoryOpen)setInventory(false);
+    controls.unlock();
+    refreshTuningUI();
+    updateHitboxHelper();
+    tuningStatus.textContent="R close • K copy JSON";
+    return;
+  }
+
+  removeHitboxHelper();
+
+  if(!menuOpen&&!inventoryOpen){
+    controls.lock();
+  }
+}
+
+for(const input of tuningInputs){
+  input.addEventListener("input",()=>{
+    const key=input.dataset.tune;
+    T[key]=Number(input.value);
+    const output=input.parentElement.querySelector("output");
+    if(output)output.textContent=formatTuneValue(key,T[key]);
+    applyTuning();
+    saveTuning();
+  });
+}
+
+tuningReset.addEventListener("click",()=>{
+  Object.assign(T,{
+    renderScale:1,
+    guiScale:autoGuiScale,
+    gameFov:75,
+    menuFov:100,
+    menuPitch:-25,
+    menuSpeed:2.4,
+    playerRadius:.30,
+    playerHeight:1.80,
+    eyeHeight:1.62,
+    sneakHeight:1.50,
+    sneakEyeHeight:1.27,
+    stepHeight:.60,
+    reach:7.5
+  });
+  refreshTuningUI();
+  applyTuning();
+  saveTuning();
+  tuningStatus.textContent="Defaults restored";
+});
+
+function overlapsPlayer{
   const item=hotbarItem(selected);
   const hit=hitBlock();
   if(!item||!hit?.face)return;
@@ -418,13 +619,13 @@ function updateTarget(){
 }
 
 function collides(){
-  const eye=sneaking?SNEAK_EYE_HEIGHT:EYE_HEIGHT;
-  const height=sneaking?SNEAK_HEIGHT:PLAYER_HEIGHT;
+  const eye=sneaking?SNEAK_T.eyeHeight:T.eyeHeight;
+  const height=sneaking?T.sneakHeight:T.playerHeight;
   return world.collidesPlayer(
     camera.position.x,
     camera.position.y,
     camera.position.z,
-    PLAYER_RADIUS,
+    T.playerRadius,
     eye,
     height
   );
@@ -445,7 +646,7 @@ function tryMoveAxis(delta,axis){
   if(!grounded)return;
 
   const oldY=camera.position.y;
-  camera.position.y+=STEP_HEIGHT;
+  camera.position.y+=T.stepHeight;
 
   if(collides()){
     camera.position.y=oldY;
@@ -506,7 +707,7 @@ function moveVertical(distance){
 function updateSneakState(wantSneak){
   if(wantSneak===sneaking)return;
 
-  const delta=EYE_HEIGHT-SNEAK_EYE_HEIGHT;
+  const delta=T.eyeHeight-SNEAK_T.eyeHeight;
   const oldY=camera.position.y;
 
   if(wantSneak){
@@ -616,10 +817,12 @@ function updateHunger(){
 
 function animateMenu(){
   const seconds=performance.now()/1000;
-  const angle=THREE.MathUtils.degToRad(seconds*2.4);
+  const angle=THREE.MathUtils.degToRad(seconds*T.menuSpeed);
+  const bob=THREE.MathUtils.degToRad(Math.sin(seconds*.55)*.75);
 
-  menuCamera.rotation.x=-THREE.MathUtils.degToRad(8);
-  menuCamera.rotation.y=Math.PI+angle;
+  // Start at South (+Z), then subtract yaw for the modern direction.
+  menuCamera.rotation.x=THREE.MathUtils.degToRad(T.menuPitch)+bob;
+  menuCamera.rotation.y=Math.PI-angle;
   menuCamera.rotation.z=0;
 }
 
@@ -629,11 +832,25 @@ addEventListener("resize",()=>{
   menuCamera.aspect=innerWidth/innerHeight;
   menuCamera.updateProjectionMatrix();
   renderer.setSize(innerWidth,innerHeight,false);
-  updateGuiScale();
+  applyTuning();
 });
 
 addEventListener("keydown",event=>{
   if(event.code==="Space")event.preventDefault();
+
+  if(event.code==="KeyR"&&!event.repeat){
+    event.preventDefault();
+    if(!menuOpen)setTuning(!tuningOpen);
+    return;
+  }
+
+  if(event.code==="KeyK"&&!event.repeat){
+    event.preventDefault();
+    copyTuningJson();
+    return;
+  }
+
+  if(tuningOpen)return;
 
   if(event.code==="KeyE"){
     event.preventDefault();
@@ -670,12 +887,12 @@ canvas.addEventListener("wheel",event=>{
 },{passive:false});
 
 controls.addEventListener("lock",()=>{
-  if(!menuOpen&&!inventoryOpen)help.classList.add("hidden");
+  if(!menuOpen&&!inventoryOpen&&!tuningOpen)help.classList.add("hidden");
   keys.clear();
 });
 
 controls.addEventListener("unlock",()=>{
-  if(!menuOpen&&!inventoryOpen)help.classList.remove("hidden");
+  if(!menuOpen&&!inventoryOpen&&!tuningOpen)help.classList.remove("hidden");
   keys.clear();
 });
 
@@ -685,7 +902,8 @@ buildInventorySlots();
 renderInventory();
 updateHunger();
 updateTargetText();
-updateGuiScale();
+refreshTuningUI();
+applyTuning();
 setMenu(true);
 
 function renderLoop(){
