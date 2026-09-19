@@ -24,14 +24,14 @@ export class World{
     return this.chunks.get(chunkKey(cx,cz))??null;
   }
 
-  ensureChunk(cx,cz){
+  ensureChunk(cx,cz,render=true){
     const key=chunkKey(cx,cz);
     let chunk=this.chunks.get(key);
     if(chunk)return chunk;
     chunk=new Chunk(cx,cz);
     chunk.generate();
     this.chunks.set(key,chunk);
-    this.rebuildChunk(chunk);
+    if(render)this.rebuildChunk(chunk);
     return chunk;
   }
 
@@ -47,7 +47,7 @@ export class World{
     for(let dz=-RENDER_DISTANCE;dz<=RENDER_DISTANCE;dz++){
       for(let dx=-RENDER_DISTANCE;dx<=RENDER_DISTANCE;dx++){
         if(dx*dx+dz*dz>RENDER_DISTANCE*RENDER_DISTANCE+RENDER_DISTANCE)continue;
-        this.ensureChunk(centerX+dx,centerZ+dz);
+        this.ensureChunk(centerX+dx,centerZ+dz,false);
       }
     }
 
