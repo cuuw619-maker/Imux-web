@@ -1,8 +1,8 @@
 import {BLOCKS} from "./blocks.js";
 
 export const CHUNK_SIZE=16;
-export const WORLD_HEIGHT=40;
-export const RENDER_DISTANCE=4;
+export const WORLD_HEIGHT=64;
+export const RENDER_DISTANCE=5;
 
 const IDS=Object.freeze({
   air:0,bedrock:1,stone:2,dirt:3,grass:4,cobblestone:5,
@@ -68,11 +68,22 @@ function fbm(x,z){
 }
 
 export function terrainHeight(x,z){
+  const continent=fbm(x*.006,z*.006);
   const broad=fbm(x*.018,z*.018);
   const detail=fbm(x*.055+31.7,z*.055-12.4);
-  const hills=Math.pow(broad,.85)*11;
-  const small=detail*3;
-  return Math.max(2,Math.min(WORLD_HEIGHT-2,3+Math.floor(hills+small)));
+
+  const base=4+Math.floor(continent*10);
+  const hills=Math.pow(broad,.82)*24;
+  const small=detail*5;
+  const ridges=Math.pow(Math.max(0,continent-.52)*2.1,1.5)*16;
+
+  return Math.max(
+    4,
+    Math.min(
+      WORLD_HEIGHT-3,
+      base+Math.floor(hills+small+ridges)
+    )
+  );
 }
 
 export class Chunk{
