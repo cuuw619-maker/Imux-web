@@ -113,11 +113,15 @@ export class World{
   }
 
   biomeAt(x,z){
-    const temperature=.5+.5*Math.sin(x*.0105+z*.0067);
-    const rainfall=.5+.5*Math.cos(x*.0079-z*.0117);
+    const temperature=THREE.MathUtils.clamp(
+      .5+.5*Math.sin(x*.0105+z*.0067),0,1
+    );
+    const downfall=THREE.MathUtils.clamp(
+      .5+.5*Math.cos(x*.0079-z*.0117),0,1
+    );
     return [
-      THREE.MathUtils.clamp(temperature,.01,.99),
-      THREE.MathUtils.clamp(rainfall,.01,.99)
+      1-temperature,
+      1-downfall*temperature
     ];
   }
 
