@@ -6,7 +6,7 @@ button{font:inherit}
 .hidden{display:none!important}
 
 #menu{position:fixed;inset:0;z-index:30;display:grid;place-items:center;background:#0000}
-#menu-overlay{position:absolute;inset:0;background-position:center;background-size:cover;background-repeat:no-repeat;opacity:1;pointer-events:none}
+#menu-overlay{position:absolute;inset:0;background-position:center;background-size:cover;background-repeat:no-repeat;background-color:rgba(0,0,0,.08);background-blend-mode:normal;backdrop-filter:blur(2px);-webkit-backdrop-filter:blur(2px);pointer-events:none}
 .menu-card{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;gap:9px;min-width:280px;padding:34px 30px;background:#0007;border:1px solid #fff5;box-shadow:0 18px 60px #0009}
 .menu-title{font:700 44px/1 monospace;letter-spacing:9px;color:#fff;text-shadow:3px 3px 0 #000}
 .menu-subtitle{margin-bottom:15px;color:#fff;font:11px/1 monospace;letter-spacing:2px;text-shadow:1px 1px 2px #000}
