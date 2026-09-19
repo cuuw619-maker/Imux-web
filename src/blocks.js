@@ -1,0 +1,1 @@
+export const BLOCKS={grass:{color:0x55aa45},dirt:{color:0x8b5a32},stone:{color:0x888888},wood:{color:0x9a6b3f}};
