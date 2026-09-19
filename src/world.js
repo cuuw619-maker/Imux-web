@@ -44,23 +44,41 @@ export class World{
     this.centerChunkX=centerX;
     this.centerChunkZ=centerZ;
 
+    const touched=new Set();
+
     for(let dz=-RENDER_DISTANCE;dz<=RENDER_DISTANCE;dz++){
       for(let dx=-RENDER_DISTANCE;dx<=RENDER_DISTANCE;dx++){
         if(dx*dx+dz*dz>RENDER_DISTANCE*RENDER_DISTANCE+RENDER_DISTANCE)continue;
-        this.ensureChunk(centerX+dx,centerZ+dz,false);
+
+        const cx=centerX+dx;
+        const cz=centerZ+dz;
+        const key=chunkKey(cx,cz);
+        const existed=this.chunks.has(key);
+        const chunk=this.ensureChunk(cx,cz,false);
+
+        if(!existed)touched.add(chunk);
       }
     }
 
     for(const [key,chunk] of [...this.chunks]){
       const dx=chunk.cx-centerX;
       const dz=chunk.cz-centerZ;
-      if(dx*dx+dz*dz>RENDER_DISTANCE*RENDER_DISTANCE+RENDER_DISTANCE){
-        this.removeChunk(chunk);
-        this.chunks.delete(key);
+
+      if(dx*dx+dz*dz<=RENDER_DISTANCE*RENDER_DISTANCE+RENDER_DISTANCE)continue;
+
+      this.removeChunk(chunk);
+      this.chunks.delete(key);
+
+      for(let nz=-1;nz<=1;nz++){
+        for(let nx=-1;nx<=1;nx++){
+          const neighbor=this.getChunk(chunk.cx+nx,chunk.cz+nz);
+          if(neighbor)touched.add(neighbor);
+        }
       }
     }
 
-    this.rebuildAllVisibleNeighbors();
+    for(const chunk of touched)this.rebuildChunk(chunk);
+    this.rebuildRaycastList();
   }
 
   removeChunk(chunk){
