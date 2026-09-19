@@ -242,10 +242,10 @@ function makeSky(){
 function setMenu(open){
   menuOpen=open;
   menu.classList.toggle("hidden",!open);
-  help.classList.toggle("hidden",open||inventoryOpen);
+  help.classList.toggle("hidden",open||inventoryOpen||tuningOpen);
   if(open){
     controls.unlock();
-  }else{
+  }else if(!tuningOpen){
     controls.lock();
   }
 }
@@ -253,10 +253,10 @@ function setMenu(open){
 function setInventory(open){
   inventoryOpen=open;
   inventoryPanel.classList.toggle("hidden",!open);
-  help.classList.toggle("hidden",open||menuOpen);
+  help.classList.toggle("hidden",open||menuOpen||tuningOpen);
   if(open){
     controls.unlock();
-  }else if(!menuOpen){
+  }else if(!menuOpen&&!tuningOpen){
     controls.lock();
   }
 }
@@ -619,7 +619,7 @@ function updateTarget(){
 }
 
 function collides(){
-  const eye=sneaking?SNEAK_T.eyeHeight:T.eyeHeight;
+  const eye=sneaking?T.sneakEyeHeight:T.eyeHeight;
   const height=sneaking?T.sneakHeight:T.playerHeight;
   return world.collidesPlayer(
     camera.position.x,
@@ -707,7 +707,7 @@ function moveVertical(distance){
 function updateSneakState(wantSneak){
   if(wantSneak===sneaking)return;
 
-  const delta=T.eyeHeight-SNEAK_T.eyeHeight;
+  const delta=T.eyeHeight-T.sneakEyeHeight;
   const oldY=camera.position.y;
 
   if(wantSneak){
