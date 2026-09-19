@@ -31,8 +31,8 @@ button{font:inherit}
 .slot{position:relative;flex:1;height:100%;border:0;background:transparent;background-repeat:no-repeat;background-position:center;background-size:calc(16px * var(--gui-scale)) calc(16px * var(--gui-scale));pointer-events:none}
 .slot.selected::before{content:"";position:absolute;left:calc(-2px * var(--gui-scale));top:calc(-1px * var(--gui-scale));width:calc(24px * var(--gui-scale));height:calc(24px * var(--gui-scale));background:url("./assets/minecraft/textures/gui/hotbar_selection.png") center/100% 100% no-repeat;image-rendering:pixelated;z-index:3}
 
-#hunger{position:fixed;left:calc(50% + 1px * var(--gui-scale));bottom:calc(30px * var(--gui-scale));width:calc(180px * var(--gui-scale));height:calc(18px * var(--gui-scale));display:grid;grid-template-columns:repeat(10,calc(18px * var(--gui-scale)));z-index:10;pointer-events:none}
-.hunger-icon{width:calc(18px * var(--gui-scale));height:calc(18px * var(--gui-scale));background:center/100% 100% no-repeat;image-rendering:pixelated}
+#hunger{position:fixed;left:calc(50% + 2px * var(--gui-scale));bottom:calc(31px * var(--gui-scale));width:calc(90px * var(--gui-scale));height:calc(9px * var(--gui-scale));display:grid;grid-template-columns:repeat(10,calc(9px * var(--gui-scale)));z-index:10;pointer-events:none}
+.hunger-icon{width:calc(9px * var(--gui-scale));height:calc(9px * var(--gui-scale));background:center/100% 100% no-repeat;image-rendering:pixelated}
 
 #offhand-left,#offhand-right{position:fixed;bottom:calc(3px * var(--gui-scale));width:calc(29px * var(--gui-scale));height:calc(24px * var(--gui-scale));z-index:10;pointer-events:none}
 #offhand-left{left:calc(50% - 127px * var(--gui-scale))}
@@ -46,9 +46,26 @@ button{font:inherit}
 #inventory{position:fixed;inset:0;z-index:25;display:grid;place-items:center;background:#0005}
 #inventory-window{position:relative;width:176px;height:166px;background:url("./assets/minecraft/textures/gui/container/inventory.png") center/176px 166px no-repeat;image-rendering:pixelated;box-shadow:0 12px 40px #0008;transform:scale(var(--gui-scale))}
 #inventory-slots{position:absolute;inset:0}
-.inventory-slot{position:absolute;width:18px;height:18px;background:center/16px 16px no-repeat;image-rendering:pixelated}
+.inventory-slot{position:absolute;width:18px;height:18px;background:center/16px 16px no-repeat;image-rendering:pixelated;pointer-events:none}
 .item-count{position:absolute;right:-1px;bottom:-2px;color:#fff;font:10px/1 monospace;text-shadow:1px 1px 0 #000}
 
 @media(max-width:700px){
   #help{gap:7px;font-size:9px}
+}
+
+
+#tuning{position:fixed;inset:0;z-index:50;display:grid;place-items:center;background:rgba(0,0,0,.58)}
+#tuning-window{width:min(620px,calc(100vw - 28px));max-height:min(720px,calc(100vh - 28px));overflow:auto;padding:16px;background:#161616f2;border:2px solid #555;box-shadow:0 20px 70px #000d;color:#fff;font-family:monospace}
+.tuning-title{font-size:16px;font-weight:700;letter-spacing:1px;text-align:center;text-shadow:2px 2px #000}
+.tuning-hint{margin:6px 0 14px;color:#aaa;text-align:center;font-size:11px}
+.tuning-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px}
+.tuning-grid label{display:grid;grid-template-columns:1fr auto;gap:4px 8px;padding:7px 8px;background:#242424;border:1px solid #3a3a3a;font-size:11px}
+.tuning-grid output{color:#ddd;min-width:48px;text-align:right}
+.tuning-grid input{grid-column:1 / -1;width:100%}
+.tuning-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:12px}
+#tuning-reset{height:30px;padding:0 14px;border:1px solid #777;background:#333;color:#fff;font:700 11px monospace;cursor:pointer}
+#tuning-reset:hover{background:#444}
+#tuning-status{color:#aaa;font-size:10px}
+@media(max-width:720px){
+  .tuning-grid{grid-template-columns:1fr}
 }
