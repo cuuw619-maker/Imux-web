@@ -19,6 +19,7 @@ export class World{
   key(x,y,z){return `${x}|${y}|${z}`}
   columnKey(x,z){return `${x}|${z}`}
   get(x,y,z){return this.data.get(this.key(x,y,z))??null}
+  isSolid(x,y,z){return this.data.has(this.key(x,y,z))}
 
   set(x,y,z,type){
     if(BLOCKS[type])this.data.set(this.key(x,y,z),type);
@@ -48,16 +49,44 @@ export class World{
     }
   }
 
+  collidesPlayer(px,eyeY,pz,radius,heightOffset,height){
+    const minX=px-radius;
+    const maxX=px+radius;
+    const minY=eyeY-heightOffset;
+    const maxY=minY+height;
+    const minZ=pz-radius;
+    const maxZ=pz+radius;
+
+    const x0=Math.floor(minX);
+    const x1=Math.floor(maxX-0.000001);
+    const y0=Math.floor(minY);
+    const y1=Math.floor(maxY-0.000001);
+    const z0=Math.floor(minZ);
+    const z1=Math.floor(maxZ-0.000001);
+
+    for(let x=x0;x<=x1;x++){
+      for(let y=y0;y<=y1;y++){
+        for(let z=z0;z<=z1;z++){
+          if(!this.isSolid(x,y,z))continue;
+          if(maxX>x&&minX<x+1&&maxY>y&&minY<y+1&&maxZ>z&&minZ<z+1)return true;
+        }
+      }
+    }
+    return false;
+  }
+
   removeBlock(x,y,z){
     const type=this.get(x,y,z);
     if(!type||!BLOCKS[type].breakable)return false;
     this.data.delete(this.key(x,y,z));
+
     const column=this.columnKey(x,z);
     let top=this.top.get(column)??-1;
     if(y===top){
       while(top>=0&&!this.get(x,top,z))top--;
       this.top.set(column,top);
     }
+
     this.rebuildMeshes();
     return true;
   }
@@ -65,9 +94,11 @@ export class World{
   placeBlock(x,y,z,type){
     if(y<1||this.get(x,y,z)||!BLOCKS[type])return false;
     this.set(x,y,z,type);
+
     const column=this.columnKey(x,z);
     const oldTop=this.top.get(column)??-1;
     if(y>oldTop)this.top.set(column,y);
+
     this.rebuildMeshes();
     return true;
   }
@@ -108,8 +139,8 @@ export class World{
   }
 
   addLighting(){
-    this.scene.add(new THREE.HemisphereLight(0xddeeff,0x554433,2.1));
-    const sun=new THREE.DirectionalLight(0xffffff,2.4);
+    this.scene.add(new THREE.HemisphereLight(0xddeeff,0x554433,2.0));
+    const sun=new THREE.DirectionalLight(0xffffff,2.2);
     sun.position.set(30,60,20);
     this.scene.add(sun);
   }
